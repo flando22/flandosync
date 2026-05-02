@@ -1,0 +1,5 @@
+{
+    "server_url": "http://localhost:8000",
+    "app_name": "Flandosync Client",
+    "theme": "dark"
+}

@@ -1,0 +1,328 @@
+# Flandosync Instructions
+
+This document explains how to publish, configure, run, and maintain Flandosync.
+
+Flandosync has two independent parts:
+
+- Server: stores modpack files, generates manifests, keeps access keys, and serves files over HTTP.
+- Client: desktop app for players. It accepts an access key, asks for the Minecraft instance folder, and syncs files from the server.
+
+## Repository Layout
+
+```text
+flandosync-public/
+  client/
+    client.py
+    flandosync_settings.example.json
+    requirements.txt
+    README.md
+  server/
+    server.py
+    config.example.json
+    requirements.txt
+    README.md
+  docs/
+    INSTRUCTION.md
+  .gitignore
+  README.md
+```
+
+Runtime files are intentionally ignored by Git:
+
+```text
+server/config.json
+server/keys.json
+server/modpacks/
+client/flandosync_settings.json
+client/flandosync_client.json
+```
+
+Do not publish real keys, private modpack files, IP addresses, domains, or player-specific paths.
+
+## Server Setup
+
+Install Python 3.10 or newer.
+
+Copy the example config:
+
+```bash
+cd server
+cp config.example.json config.json
+```
+
+Edit `config.json`:
+
+```json
+{
+    "server_url": "http://localhost:8000",
+    "modpacks_dir": "./modpacks",
+    "port": 8000
+}
+```
+
+Fields:
+
+- `server_url`: fallback URL used when the HTTP request does not include a `Host` header.
+- `modpacks_dir`: folder where modpack folders live.
+- `port`: HTTP port to listen on.
+
+The server also supports both LAN and public access. When a client connects through a LAN IP, the server returns LAN links. When a client connects through a domain, the server returns domain links. This is based on the incoming HTTP `Host` header.
+
+## Creating a Modpack
+
+Create a modpack folder:
+
+```bash
+mkdir -p modpacks/example-pack/mods
+mkdir -p modpacks/example-pack/config
+```
+
+Put files inside the modpack folder:
+
+```text
+modpacks/example-pack/mods/some-mod.jar
+modpacks/example-pack/config/some-config.toml
+```
+
+Generate the manifest:
+
+```bash
+python server.py -generate example-pack
+```
+
+The command creates or updates:
+
+```text
+modpacks/example-pack/manifest.json
+modpacks/example-pack/key.txt
+keys.json
+```
+
+The access key is printed in the terminal. Give this key to players.
+
+## Updating a Modpack
+
+When you add, remove, or replace files, regenerate the manifest:
+
+```bash
+cd server
+python server.py -generate example-pack
+```
+
+Players do not need a new client. They only need to press `SYNC` again.
+
+The generated key stays stable. It is reused from `key.txt` or `keys.json`.
+
+## Starting the Server
+
+Run:
+
+```bash
+cd server
+python server.py -serve
+```
+
+Useful URLs:
+
+```text
+http://localhost:8000/project_by_key?key=<ACCESS_KEY>
+http://localhost:8000/modpacks/example-pack/manifest.json
+```
+
+For a real deployment, run the server behind a process manager such as systemd, tmux, screen, Docker, or another service manager.
+
+## Client Setup
+
+Install dependencies:
+
+```bash
+cd client
+python -m pip install -r requirements.txt
+```
+
+Copy the example settings:
+
+```bash
+cp flandosync_settings.example.json flandosync_settings.json
+```
+
+Edit `flandosync_settings.json`:
+
+```json
+{
+    "server_url": "http://your-server.example:8000",
+    "app_name": "Flandosync Client",
+    "theme": "dark"
+}
+```
+
+Run:
+
+```bash
+python client.py
+```
+
+## Using the Client
+
+1. Enter the access key.
+2. Click `Add modpack`.
+3. Choose the root folder of the Minecraft instance.
+4. Select the modpack in the list.
+5. Click `SYNC`.
+
+Choose the instance root folder, not the `mods` folder.
+
+Correct:
+
+```text
+C:\Users\<name>\AppData\Roaming\.minecraft
+```
+
+Incorrect:
+
+```text
+C:\Users\<name>\AppData\Roaming\.minecraft\mods
+```
+
+The manifest contains paths like `mods/example.jar`, so choosing `mods` directly would create `mods/mods/example.jar`.
+
+## Delete Extra Files Option
+
+The client has a `Delete extra files` checkbox.
+
+When disabled:
+
+- files from the manifest are downloaded or updated;
+- local-only client mods remain untouched.
+
+When enabled:
+
+- files from the manifest are downloaded or updated;
+- files inside synced roots, such as `mods/` and `config/`, are deleted if they are not in the manifest.
+
+Use this option only when you want a clean client folder matching the server pack.
+
+## Building a Windows EXE
+
+Install build dependencies:
+
+```powershell
+cd client
+python -m pip install -r requirements.txt pyinstaller
+```
+
+Build:
+
+```powershell
+python -m PyInstaller --noconfirm --clean --onefile --windowed --name FlandosyncLauncher client.py
+```
+
+The result will be:
+
+```text
+client/dist/FlandosyncLauncher.exe
+```
+
+Ship the executable together with:
+
+```text
+flandosync_settings.json
+```
+
+Do not ship `flandosync_client.json` unless you intentionally want to include saved local projects.
+
+## Recommended Release Package
+
+For players, include:
+
+```text
+FlandosyncLauncher.exe
+flandosync_settings.json
+README.txt
+```
+
+The player README should include:
+
+- the access key;
+- the correct server URL if needed;
+- a reminder to choose the Minecraft instance root folder;
+- a warning about `Delete extra files`.
+
+## Safety Checklist Before Publishing
+
+Before pushing to GitHub, verify that these are not present:
+
+```text
+keys.json
+key.txt
+manifest.json
+modpacks/
+flandosync_client.json
+real config.json
+real flandosync_settings.json
+IP addresses
+private domains
+usernames
+local filesystem paths
+```
+
+Commit only:
+
+```text
+config.example.json
+flandosync_settings.example.json
+source files
+requirements
+docs
+```
+
+## Common Maintenance Commands
+
+Generate or update a modpack:
+
+```bash
+python server.py -generate example-pack
+```
+
+Start server:
+
+```bash
+python server.py -serve
+```
+
+Test key lookup:
+
+```bash
+curl "http://localhost:8000/project_by_key?key=<ACCESS_KEY>"
+```
+
+Test manifest:
+
+```bash
+curl "http://localhost:8000/modpacks/example-pack/manifest.json"
+```
+
+## Troubleshooting
+
+If the client says the server is unavailable:
+
+- check that `python server.py -serve` is running;
+- check that the port in `config.json` is open;
+- check that `flandosync_settings.json` points to the correct server URL;
+- test `/project_by_key?key=<ACCESS_KEY>` in a browser.
+
+If the client downloads nothing:
+
+- regenerate the manifest;
+- open `manifest.json` and check that `files` is not empty;
+- make sure files are inside the selected modpack folder before running `-generate`.
+
+If files appear under `mods/mods`:
+
+- the user selected the `mods` folder instead of the Minecraft instance root;
+- remove the wrongly created folder and add the modpack again with the correct root.
+
+If extra client mods are being removed:
+
+- disable `Delete extra files`;
+- only enable it when you want strict cleanup.

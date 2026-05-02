@@ -1,0 +1,19 @@
+__pycache__/
+*.py[cod]
+*.spec
+.venv/
+venv/
+build/
+dist/
+
+# Local/runtime state
+server/config.json
+server/keys.json
+server/modpacks/
+client/flandosync_settings.json
+client/flandosync_client.json
+
+# Packaged releases
+release/
+*.zip
+*.exe
