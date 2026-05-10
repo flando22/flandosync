@@ -162,6 +162,21 @@ Run:
 python client.py
 ```
 
+## Client Settings
+
+Click `Settings` in the client to edit:
+
+- server URL;
+- theme.
+
+The settings dialog also has a `Test server` button. It checks whether the configured Flandosync server is reachable.
+
+Settings are stored in:
+
+```text
+flandosync_settings.json
+```
+
 ## Using the Client
 
 1. Enter the access key.

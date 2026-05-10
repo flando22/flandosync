@@ -20,11 +20,11 @@ This document tracks planned features and a recommended implementation order.
 
 ## v1.2.0 - Client Settings
 
-- Settings dialog.
-- Server URL setting.
-- Theme setting.
-- Save settings to `flandosync_settings.json`.
-- Test server connection from the settings dialog.
+- Settings dialog. Done.
+- Server URL setting. Done.
+- Theme setting. Done.
+- Save settings to `flandosync_settings.json`. Done.
+- Test server connection from the settings dialog. Done.
 
 ## v1.3.0 - Stability And Performance
 

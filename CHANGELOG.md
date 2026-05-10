@@ -1,5 +1,13 @@
 # Changelog
 
+## v1.2.0
+
+- Added client settings dialog.
+- Added editable server URL in the UI.
+- Added theme setting.
+- Added server reachability test button.
+- Settings are saved to `flandosync_settings.json`.
+
 ## v1.1.0
 
 - Added modpack context menu in the client.

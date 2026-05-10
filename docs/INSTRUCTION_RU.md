@@ -163,6 +163,21 @@ cp flandosync_settings.example.json flandosync_settings.json
 python client.py
 ```
 
+## Настройки Клиента
+
+Нажми `Settings` в клиенте, чтобы изменить:
+
+- адрес сервера;
+- тему.
+
+В окне настроек есть кнопка `Test server`. Она проверяет, доступен ли настроенный Flandosync-сервер.
+
+Настройки хранятся в:
+
+```text
+flandosync_settings.json
+```
+
 ## Использование Клиента
 
 1. Введи ключ доступа.

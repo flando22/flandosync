@@ -31,3 +31,4 @@ Ship the executable together with a `flandosync_settings.json` file configured f
 - Removing a modpack deletes it from the local list. Synced files are kept unless the confirmation checkbox is enabled.
 - `Delete extra files` removes files in synced folders that are not present in the manifest.
 - `Export logs` saves the console log and sync changes list to a text file.
+- `Settings` lets users edit the server URL, change the theme, and test server connectivity.

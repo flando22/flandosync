@@ -13,6 +13,7 @@ from PyQt6.QtWidgets import (
     QDialog,
     QDialogButtonBox,
     QFileDialog,
+    QFormLayout,
     QHBoxLayout,
     QInputDialog,
     QLabel,
@@ -64,6 +65,12 @@ def load_external_config():
     except OSError:
         pass
     return DEFAULT_CONFIG
+
+
+def save_external_config(config):
+    config_path = os.path.join(app_dir(), "flandosync_settings.json")
+    with open(config_path, "w", encoding="utf-8") as f:
+        json.dump(config, f, ensure_ascii=False, indent=4)
 
 
 class SyncWorker(QThread):
@@ -197,6 +204,52 @@ class SyncWorker(QThread):
             self.finished.emit(False)
 
 
+class SettingsDialog(QDialog):
+    def __init__(self, config, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("Settings")
+        self.config = dict(config)
+        self.server_url_input = QLineEdit(normalize_url(self.config.get("server_url", DEFAULT_CONFIG["server_url"])))
+        self.theme_input = QLineEdit(self.config.get("theme", DEFAULT_CONFIG["theme"]))
+        self.status_label = QLabel("")
+
+        layout = QVBoxLayout(self)
+        form_layout = QFormLayout()
+        form_layout.addRow("Server URL:", self.server_url_input)
+        form_layout.addRow("Theme:", self.theme_input)
+        layout.addLayout(form_layout)
+
+        test_btn = QPushButton("Test server")
+        test_btn.clicked.connect(self.test_server)
+        layout.addWidget(test_btn)
+        layout.addWidget(self.status_label)
+
+        buttons = QDialogButtonBox(
+            QDialogButtonBox.StandardButton.Cancel | QDialogButtonBox.StandardButton.Save
+        )
+        buttons.accepted.connect(self.accept)
+        buttons.rejected.connect(self.reject)
+        layout.addWidget(buttons)
+
+    def get_config(self):
+        config = {**DEFAULT_CONFIG, **self.config}
+        config["server_url"] = normalize_url(self.server_url_input.text())
+        theme = self.theme_input.text().strip().lower() or DEFAULT_CONFIG["theme"]
+        config["theme"] = theme
+        return config
+
+    def test_server(self):
+        try:
+            server_url = normalize_url(self.server_url_input.text())
+            response = requests.get(f"{server_url}/project_by_key", params={"key": "__healthcheck__"}, timeout=5)
+            if response.status_code in {200, 404}:
+                self.status_label.setText("Server is reachable.")
+            else:
+                self.status_label.setText(f"Server answered with HTTP {response.status_code}.")
+        except Exception as exc:
+            self.status_label.setText(f"Could not reach server: {exc}")
+
+
 class FlandosyncClient(QMainWindow):
     def __init__(self):
         super().__init__()
@@ -208,6 +261,7 @@ class FlandosyncClient(QMainWindow):
         self.current_project = None
 
         self.init_ui()
+        self.apply_theme()
 
     def load_config(self):
         if os.path.exists(self.config_path):
@@ -221,6 +275,43 @@ class FlandosyncClient(QMainWindow):
     def save_config(self):
         with open(self.config_path, "w", encoding="utf-8") as f:
             json.dump({"projects": self.projects}, f, ensure_ascii=False, indent=4)
+
+    def apply_theme(self):
+        theme = self.external_config.get("theme", "dark").lower()
+        if theme == "light":
+            self.setStyleSheet("")
+            if hasattr(self, "console"):
+                self.console.setStyleSheet(
+                    "background-color: #ffffff; color: #1f2937; font-family: 'Consolas';"
+                )
+            return
+
+        self.setStyleSheet(
+            """
+            QMainWindow, QWidget { background-color: #202124; color: #f3f4f6; }
+            QLineEdit, QListWidget, QTextEdit {
+                background-color: #111827;
+                color: #f3f4f6;
+                border: 1px solid #374151;
+            }
+            QPushButton {
+                background-color: #374151;
+                color: #f3f4f6;
+                border: 1px solid #4b5563;
+                padding: 6px;
+            }
+            QPushButton:disabled { color: #9ca3af; }
+            QProgressBar {
+                border: 1px solid #4b5563;
+                text-align: center;
+            }
+            QProgressBar::chunk { background-color: #2ecc71; }
+            """
+        )
+        if hasattr(self, "console"):
+            self.console.setStyleSheet(
+                "background-color: #0b1020; color: #00ff7f; font-family: 'Consolas';"
+            )
 
     def project_display_name(self, project):
         alias = project.get("alias", "").strip()
@@ -263,6 +354,10 @@ class FlandosyncClient(QMainWindow):
         add_btn.clicked.connect(self.add_project)
         left_panel.addWidget(add_btn)
 
+        settings_btn = QPushButton("Settings")
+        settings_btn.clicked.connect(self.open_settings)
+        left_panel.addWidget(settings_btn)
+
         right_panel = QVBoxLayout()
         self.status_label = QLabel("Select a modpack")
         self.status_label.setStyleSheet("font-weight: bold; font-size: 14px;")
@@ -301,6 +396,17 @@ class FlandosyncClient(QMainWindow):
 
         main_layout.addLayout(left_panel, 1)
         main_layout.addLayout(right_panel, 2)
+
+    def open_settings(self):
+        dialog = SettingsDialog(self.external_config, self)
+        if dialog.exec() != QDialog.DialogCode.Accepted:
+            return
+
+        self.external_config = dialog.get_config()
+        save_external_config(self.external_config)
+        self.setWindowTitle(self.external_config.get("app_name", "Flandosync Client"))
+        self.apply_theme()
+        self.console.append("Settings saved.")
 
     def add_project(self):
         key = self.key_input.text().strip()
