@@ -16,6 +16,11 @@ Full setup and maintenance docs:
 - English: [docs/INSTRUCTION.md](docs/INSTRUCTION.md)
 - Russian: [docs/INSTRUCTION_RU.md](docs/INSTRUCTION_RU.md)
 
+Roadmap:
+
+- English: [docs/ROADMAP.md](docs/ROADMAP.md)
+- Russian: [docs/ROADMAP_RU.md](docs/ROADMAP_RU.md)
+
 ### Server
 
 ```bash

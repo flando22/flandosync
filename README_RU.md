@@ -14,6 +14,11 @@ Flandosync - небольшая утилита для синхронизации
 - English: [docs/INSTRUCTION.md](docs/INSTRUCTION.md)
 - Русский: [docs/INSTRUCTION_RU.md](docs/INSTRUCTION_RU.md)
 
+Дорожная карта:
+
+- English: [docs/ROADMAP.md](docs/ROADMAP.md)
+- Русский: [docs/ROADMAP_RU.md](docs/ROADMAP_RU.md)
+
 ### Сервер
 
 ```bash
