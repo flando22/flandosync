@@ -4,19 +4,19 @@ This document tracks planned features and a recommended implementation order.
 
 ## v1.1.0 - Client Usability
 
-- Modpack context menu.
-- Local modpack alias.
+- Modpack context menu. Done.
+- Local modpack alias. Done.
   - Example display: `My Pack (aerocraft)`.
-- Remove modpack from the local list.
+- Remove modpack from the local list. Done.
   - Show a confirmation dialog.
   - Optional checkbox: `Also permanently delete modpack files`.
   - Checkbox is disabled by default.
-- Export logs from the UI.
-- Better sync result summary.
+- Export logs from the UI. Done.
+- Better sync result summary. Done.
   - Downloaded files.
   - Skipped files.
   - Deleted extra files.
-- Basic UX pass.
+- Basic UX pass. In progress.
 
 ## v1.2.0 - Client Settings
 

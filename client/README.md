@@ -23,3 +23,11 @@ python -m PyInstaller --noconfirm --clean --onefile --windowed --name Flandosync
 The executable will be created in `dist/`.
 
 Ship the executable together with a `flandosync_settings.json` file configured for your server.
+
+## Client Features
+
+- Right-click a modpack to rename or remove it.
+- Renaming only changes the local display name. The server modpack name stays unchanged.
+- Removing a modpack deletes it from the local list. Synced files are kept unless the confirmation checkbox is enabled.
+- `Delete extra files` removes files in synced folders that are not present in the manifest.
+- `Export logs` saves the console log and sync changes list to a text file.

@@ -186,6 +186,29 @@ C:\Users\<name>\AppData\Roaming\.minecraft\mods
 
 The manifest contains paths like `mods/example.jar`, so choosing `mods` directly would create `mods/mods/example.jar`.
 
+## Managing Saved Modpacks
+
+Right-click a modpack in the list to open the context menu.
+
+Available actions:
+
+- `Rename`: sets a local display alias.
+- `Remove`: removes the modpack from the local list.
+
+Renaming does not change the server modpack name. If the server name is `aerocraft` and the local alias is `My Pack`, the client displays:
+
+```text
+My Pack (aerocraft)
+```
+
+Removing a modpack keeps local files by default. The confirmation dialog has an optional checkbox:
+
+```text
+Also permanently delete synced files
+```
+
+When enabled, the client fetches the latest manifest and deletes only files listed in that manifest. It does not delete the whole selected Minecraft folder.
+
 ## Delete Extra Files Option
 
 The client has a `Delete extra files` checkbox.
@@ -201,6 +224,16 @@ When enabled:
 - files inside synced roots, such as `mods/` and `config/`, are deleted if they are not in the manifest.
 
 Use this option only when you want a clean client folder matching the server pack.
+
+## Logs And Sync Changes
+
+The client shows a separate sync changes list for:
+
+- downloaded files;
+- skipped files;
+- deleted files.
+
+Use `Export logs` to save the console output and the sync changes list to a text file.
 
 ## Building a Windows EXE
 

@@ -5,16 +5,21 @@ import sys
 from urllib.parse import urljoin
 
 import requests
-from PyQt6.QtCore import QThread, pyqtSignal
+from PyQt6.QtCore import Qt, QThread, pyqtSignal
+from PyQt6.QtGui import QAction
 from PyQt6.QtWidgets import (
     QApplication,
     QCheckBox,
+    QDialog,
+    QDialogButtonBox,
     QFileDialog,
     QHBoxLayout,
+    QInputDialog,
     QLabel,
     QLineEdit,
     QListWidget,
     QMainWindow,
+    QMenu,
     QMessageBox,
     QProgressBar,
     QPushButton,
@@ -64,6 +69,7 @@ def load_external_config():
 class SyncWorker(QThread):
     progress = pyqtSignal(int)
     log = pyqtSignal(str)
+    result = pyqtSignal(str, str)
     finished = pyqtSignal(bool)
 
     def __init__(self, project_path, manifest_url, delete_extra=False):
@@ -123,6 +129,7 @@ class SyncWorker(QThread):
                         deleted += 1
                         rel_path = os.path.relpath(local_path, self.project_path).replace("\\", "/")
                         self.log.emit(f"Deleted extra file: {rel_path}")
+                        self.result.emit("Deleted", rel_path)
 
                 for dir_name in dirs:
                     dir_path = os.path.join(current_root, dir_name)
@@ -170,10 +177,12 @@ class SyncWorker(QThread):
                     if local_hash == remote_hash:
                         needs_download = False
                         self.log.emit(f"Skipped: {rel_path} is already up to date")
+                        self.result.emit("Skipped", rel_path)
 
                 if needs_download:
                     self.log.emit(f"Downloading: {rel_path}...")
                     self.download_file(download_url, local_path, remote_hash)
+                    self.result.emit("Downloaded", rel_path)
 
                 self.progress.emit(int(((index + 1) / total_files) * 100))
 
@@ -213,6 +222,25 @@ class FlandosyncClient(QMainWindow):
         with open(self.config_path, "w", encoding="utf-8") as f:
             json.dump({"projects": self.projects}, f, ensure_ascii=False, indent=4)
 
+    def project_display_name(self, project):
+        alias = project.get("alias", "").strip()
+        name = project.get("name", "Unnamed")
+        if alias and alias != name:
+            return f"{alias} ({name})"
+        return name
+
+    def refresh_project_list(self):
+        self.project_list.clear()
+        for index, project in enumerate(self.projects):
+            self.project_list.addItem(self.project_display_name(project))
+            self.project_list.item(index).setData(Qt.ItemDataRole.UserRole, index)
+
+    def selected_project_index(self):
+        item = self.project_list.currentItem()
+        if not item:
+            return None
+        return item.data(Qt.ItemDataRole.UserRole)
+
     def init_ui(self):
         central_widget = QWidget()
         self.setCentralWidget(central_widget)
@@ -221,9 +249,10 @@ class FlandosyncClient(QMainWindow):
         left_panel = QVBoxLayout()
         left_panel.addWidget(QLabel("My modpacks:"))
         self.project_list = QListWidget()
-        for project in self.projects:
-            self.project_list.addItem(project["name"])
+        self.project_list.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        self.project_list.customContextMenuRequested.connect(self.show_project_context_menu)
         self.project_list.itemClicked.connect(self.select_project)
+        self.refresh_project_list()
         left_panel.addWidget(self.project_list)
 
         self.key_input = QLineEdit()
@@ -246,6 +275,10 @@ class FlandosyncClient(QMainWindow):
         )
         right_panel.addWidget(self.console)
 
+        right_panel.addWidget(QLabel("Sync changes:"))
+        self.change_list = QListWidget()
+        right_panel.addWidget(self.change_list)
+
         self.progress_bar = QProgressBar()
         right_panel.addWidget(self.progress_bar)
 
@@ -254,6 +287,10 @@ class FlandosyncClient(QMainWindow):
             "Delete files in synced folders that are not present in the manifest."
         )
         right_panel.addWidget(self.delete_extra_checkbox)
+
+        export_logs_btn = QPushButton("Export logs")
+        export_logs_btn.clicked.connect(self.export_logs)
+        right_panel.addWidget(export_logs_btn)
 
         self.sync_btn = QPushButton("SYNC")
         self.sync_btn.setEnabled(False)
@@ -293,19 +330,138 @@ class FlandosyncClient(QMainWindow):
                 }
                 self.projects.append(new_project)
                 self.save_config()
-                self.project_list.addItem(new_project["name"])
+                self.refresh_project_list()
                 self.key_input.clear()
                 self.console.append(f"Added modpack: {new_project['name']}")
         except Exception as exc:
             QMessageBox.critical(self, "Error", f"Could not connect: {exc}")
 
     def select_project(self, item):
-        name = item.text()
-        self.current_project = next((p for p in self.projects if p["name"] == name), None)
+        index = item.data(Qt.ItemDataRole.UserRole)
+        self.current_project = self.projects[index] if index is not None else None
         if self.current_project:
-            self.status_label.setText(f"Modpack: {name}")
+            self.status_label.setText(f"Modpack: {self.project_display_name(self.current_project)}")
             self.sync_btn.setEnabled(True)
             self.console.append(f"Selected folder: {self.current_project['path']}")
+
+    def show_project_context_menu(self, position):
+        item = self.project_list.itemAt(position)
+        if not item:
+            return
+
+        self.project_list.setCurrentItem(item)
+        menu = QMenu(self)
+        rename_action = QAction("Rename", self)
+        remove_action = QAction("Remove", self)
+        rename_action.triggered.connect(self.rename_selected_project)
+        remove_action.triggered.connect(self.remove_selected_project)
+        menu.addAction(rename_action)
+        menu.addAction(remove_action)
+        menu.exec(self.project_list.mapToGlobal(position))
+
+    def rename_selected_project(self):
+        index = self.selected_project_index()
+        if index is None:
+            return
+
+        project = self.projects[index]
+        current_alias = project.get("alias") or project["name"]
+        alias, accepted = QInputDialog.getText(
+            self, "Rename modpack", "Local display name:", text=current_alias
+        )
+        if not accepted:
+            return
+
+        alias = alias.strip()
+        if alias and alias != project["name"]:
+            project["alias"] = alias
+        else:
+            project.pop("alias", None)
+
+        self.save_config()
+        self.refresh_project_list()
+        self.project_list.setCurrentRow(index)
+        self.current_project = project
+        self.status_label.setText(f"Modpack: {self.project_display_name(project)}")
+
+    def remove_selected_project(self):
+        index = self.selected_project_index()
+        if index is None:
+            return
+
+        project = self.projects[index]
+        dialog = QDialog(self)
+        dialog.setWindowTitle("Remove modpack")
+        layout = QVBoxLayout(dialog)
+        layout.addWidget(
+            QLabel(
+                f"Remove '{self.project_display_name(project)}' from the local list?\n"
+                "Files are kept unless the checkbox below is enabled."
+            )
+        )
+        delete_files_checkbox = QCheckBox("Also permanently delete synced files")
+        layout.addWidget(delete_files_checkbox)
+        buttons = QDialogButtonBox(
+            QDialogButtonBox.StandardButton.Cancel | QDialogButtonBox.StandardButton.Ok
+        )
+        buttons.accepted.connect(dialog.accept)
+        buttons.rejected.connect(dialog.reject)
+        layout.addWidget(buttons)
+
+        if dialog.exec() != QDialog.DialogCode.Accepted:
+            return
+
+        if delete_files_checkbox.isChecked():
+            try:
+                deleted = self.delete_project_files(project)
+                self.console.append(f"Removed synced files: {deleted}")
+            except Exception as exc:
+                QMessageBox.critical(self, "Error", f"Could not delete synced files: {exc}")
+                return
+
+        removed = self.projects.pop(index)
+        self.save_config()
+        self.refresh_project_list()
+        self.current_project = None
+        self.sync_btn.setEnabled(False)
+        self.status_label.setText("Select a modpack")
+        self.console.append(f"Removed modpack from list: {self.project_display_name(removed)}")
+
+    def delete_project_files(self, project):
+        manifest_url = normalize_url(project["manifest_url"])
+        response = requests.get(manifest_url, timeout=15)
+        response.raise_for_status()
+        manifest = response.json()
+
+        project_root = os.path.abspath(project["path"])
+        deleted = 0
+        for file_info in manifest.get("files", []):
+            rel_path = file_info["path"]
+            local_path = os.path.abspath(os.path.join(project_root, rel_path))
+            if os.path.commonpath([project_root, local_path]) != project_root:
+                raise ValueError(f"Unsafe path in manifest: {rel_path}")
+            if os.path.isfile(local_path):
+                os.remove(local_path)
+                deleted += 1
+                self.change_list.addItem(f"[Removed] {rel_path}")
+
+        return deleted
+
+    def export_logs(self):
+        path, _ = QFileDialog.getSaveFileName(self, "Export logs", "flandosync-log.txt", "Text files (*.txt)")
+        if not path:
+            return
+
+        with open(path, "w", encoding="utf-8") as f:
+            f.write("Flandosync log\n")
+            f.write("=" * 40 + "\n\n")
+            f.write(self.console.toPlainText())
+            f.write("\n\nSync changes\n")
+            f.write("=" * 40 + "\n")
+            for index in range(self.change_list.count()):
+                f.write(self.change_list.item(index).text() + "\n")
+
+        self.console.append(f"Logs exported: {path}")
 
     def start_sync(self):
         if not self.current_project:
@@ -313,6 +469,7 @@ class FlandosyncClient(QMainWindow):
 
         self.sync_btn.setEnabled(False)
         self.progress_bar.setValue(0)
+        self.change_list.clear()
 
         self.worker = SyncWorker(
             self.current_project["path"],
@@ -321,6 +478,7 @@ class FlandosyncClient(QMainWindow):
         )
         self.worker.progress.connect(self.progress_bar.setValue)
         self.worker.log.connect(lambda msg: self.console.append(msg))
+        self.worker.result.connect(lambda kind, path: self.change_list.addItem(f"[{kind}] {path}"))
         self.worker.finished.connect(self.on_sync_finished)
         self.worker.start()
 

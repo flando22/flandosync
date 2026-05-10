@@ -21,6 +21,8 @@ Roadmap:
 - English: [docs/ROADMAP.md](docs/ROADMAP.md)
 - Russian: [docs/ROADMAP_RU.md](docs/ROADMAP_RU.md)
 
+Release history: [CHANGELOG.md](CHANGELOG.md)
+
 ### Server
 
 ```bash

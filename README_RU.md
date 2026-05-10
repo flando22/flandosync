@@ -19,6 +19,8 @@ Flandosync - небольшая утилита для синхронизации
 - English: [docs/ROADMAP.md](docs/ROADMAP.md)
 - Русский: [docs/ROADMAP_RU.md](docs/ROADMAP_RU.md)
 
+История изменений: [CHANGELOG.md](CHANGELOG.md)
+
 ### Сервер
 
 ```bash
