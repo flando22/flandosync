@@ -1,5 +1,13 @@
 # Changelog
 
+## v1.3.0
+
+- Added manifest cache.
+- Added retry/backoff for HTTP requests.
+- Added configurable request timeout.
+- Added limited parallel downloads.
+- Added settings for manifest cache TTL, worker count, and timeout.
+
 ## v1.2.0
 
 - Added client settings dialog.

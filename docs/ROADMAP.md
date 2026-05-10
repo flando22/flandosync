@@ -28,10 +28,10 @@ This document tracks planned features and a recommended implementation order.
 
 ## v1.3.0 - Stability And Performance
 
-- Manifest cache.
-- Limited parallel downloads.
-- Better timeouts and retries.
-- Safer behavior when the network fails.
+- Manifest cache. Done.
+- Limited parallel downloads. Done.
+- Better timeouts and retries. Done.
+- Safer behavior when the network fails. In progress.
 
 ## v1.4.0 - Modpack Versioning
 

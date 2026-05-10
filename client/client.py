@@ -2,6 +2,8 @@ import hashlib
 import json
 import os
 import sys
+import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from urllib.parse import urljoin
 
 import requests
@@ -34,6 +36,9 @@ DEFAULT_CONFIG = {
     "server_url": "http://localhost:8000",
     "app_name": "Flandosync Client",
     "theme": "dark",
+    "manifest_cache_ttl_seconds": 60,
+    "download_workers": 3,
+    "request_timeout_seconds": 30,
 }
 
 
@@ -73,17 +78,30 @@ def save_external_config(config):
         json.dump(config, f, ensure_ascii=False, indent=4)
 
 
+def bounded_int(value, default, minimum, maximum):
+    try:
+        return max(minimum, min(maximum, int(value)))
+    except (TypeError, ValueError):
+        return default
+
+
 class SyncWorker(QThread):
     progress = pyqtSignal(int)
     log = pyqtSignal(str)
     result = pyqtSignal(str, str)
     finished = pyqtSignal(bool)
 
-    def __init__(self, project_path, manifest_url, delete_extra=False):
+    def __init__(self, project_path, manifest_url, delete_extra=False, settings=None):
         super().__init__()
         self.project_path = project_path
         self.manifest_url = manifest_url
         self.delete_extra = delete_extra
+        self.settings = {**DEFAULT_CONFIG, **(settings or {})}
+        self.timeout = bounded_int(self.settings.get("request_timeout_seconds"), 30, 5, 300)
+        self.download_workers = bounded_int(self.settings.get("download_workers"), 3, 1, 8)
+        self.manifest_cache_ttl = bounded_int(
+            self.settings.get("manifest_cache_ttl_seconds"), 60, 0, 86400
+        )
 
     def get_file_hash(self, filepath):
         sha256_hash = hashlib.sha256()
@@ -99,9 +117,42 @@ class SyncWorker(QThread):
             raise ValueError(f"Unsafe path in manifest: {rel_path}")
         return local_path
 
+    def request_with_retries(self, method, url, **kwargs):
+        last_error = None
+        for attempt in range(3):
+            try:
+                response = requests.request(method, url, timeout=self.timeout, **kwargs)
+                response.raise_for_status()
+                return response
+            except requests.RequestException as exc:
+                last_error = exc
+                if attempt < 2:
+                    time.sleep(0.5 * (attempt + 1))
+        raise last_error
+
+    def manifest_cache_path(self, manifest_url):
+        cache_dir = os.path.join(app_dir(), "manifest_cache")
+        os.makedirs(cache_dir, exist_ok=True)
+        cache_name = hashlib.sha256(manifest_url.encode("utf-8")).hexdigest() + ".json"
+        return os.path.join(cache_dir, cache_name)
+
+    def load_manifest(self, manifest_url):
+        cache_path = self.manifest_cache_path(manifest_url)
+        if self.manifest_cache_ttl > 0 and os.path.exists(cache_path):
+            age = time.time() - os.path.getmtime(cache_path)
+            if age <= self.manifest_cache_ttl:
+                with open(cache_path, "r", encoding="utf-8") as f:
+                    self.log.emit(f"Using cached manifest ({int(age)}s old).")
+                    return json.load(f)
+
+        response = self.request_with_retries("GET", manifest_url)
+        manifest = response.json()
+        with open(cache_path, "w", encoding="utf-8") as f:
+            json.dump(manifest, f, ensure_ascii=False, indent=4)
+        return manifest
+
     def download_file(self, download_url, local_path, expected_hash):
-        response = requests.get(download_url, stream=True, timeout=60)
-        response.raise_for_status()
+        response = self.request_with_retries("GET", download_url, stream=True)
 
         tmp_path = local_path + ".flandosync_tmp"
         with open(tmp_path, "wb") as f:
@@ -147,13 +198,27 @@ class SyncWorker(QThread):
 
         self.log.emit(f"Cleanup finished. Deleted extra files: {deleted}")
 
+    def sync_one_file(self, manifest_url, file_info):
+        rel_path = file_info["path"]
+        remote_hash = file_info["sha256"]
+        download_url = urljoin(manifest_url, file_info["url"])
+        local_path = self.safe_local_path(rel_path)
+
+        os.makedirs(os.path.dirname(local_path), exist_ok=True)
+
+        if os.path.exists(local_path):
+            local_hash = self.get_file_hash(local_path)
+            if local_hash == remote_hash:
+                return "Skipped", rel_path, local_path
+
+        self.download_file(download_url, local_path, remote_hash)
+        return "Downloaded", rel_path, local_path
+
     def run(self):
         try:
             self.log.emit("Loading manifest...")
             manifest_url = normalize_url(self.manifest_url)
-            response = requests.get(manifest_url, timeout=15)
-            response.raise_for_status()
-            manifest = response.json()
+            manifest = self.load_manifest(manifest_url)
 
             files = manifest.get("files", [])
             total_files = len(files)
@@ -167,31 +232,25 @@ class SyncWorker(QThread):
             os.makedirs(self.project_path, exist_ok=True)
             expected_paths = set()
             sync_roots = set()
-
-            for index, file_info in enumerate(files):
+            for file_info in files:
                 rel_path = file_info["path"]
-                remote_hash = file_info["sha256"]
-                download_url = urljoin(manifest_url, file_info["url"])
                 local_path = self.safe_local_path(rel_path)
                 expected_paths.add(os.path.normcase(local_path))
                 sync_roots.add(rel_path.replace("\\", "/").split("/", 1)[0])
 
-                os.makedirs(os.path.dirname(local_path), exist_ok=True)
-
-                needs_download = True
-                if os.path.exists(local_path):
-                    local_hash = self.get_file_hash(local_path)
-                    if local_hash == remote_hash:
-                        needs_download = False
+            completed = 0
+            self.log.emit(f"Syncing {total_files} files with {self.download_workers} worker(s)...")
+            with ThreadPoolExecutor(max_workers=self.download_workers) as executor:
+                futures = [executor.submit(self.sync_one_file, manifest_url, file_info) for file_info in files]
+                for future in as_completed(futures):
+                    kind, rel_path, _ = future.result()
+                    if kind == "Skipped":
                         self.log.emit(f"Skipped: {rel_path} is already up to date")
-                        self.result.emit("Skipped", rel_path)
-
-                if needs_download:
-                    self.log.emit(f"Downloading: {rel_path}...")
-                    self.download_file(download_url, local_path, remote_hash)
-                    self.result.emit("Downloaded", rel_path)
-
-                self.progress.emit(int(((index + 1) / total_files) * 100))
+                    else:
+                        self.log.emit(f"Downloaded: {rel_path}")
+                    self.result.emit(kind, rel_path)
+                    completed += 1
+                    self.progress.emit(int((completed / total_files) * 100))
 
             if self.delete_extra:
                 self.log.emit("Deleting files that are not in the manifest...")
@@ -211,12 +270,18 @@ class SettingsDialog(QDialog):
         self.config = dict(config)
         self.server_url_input = QLineEdit(normalize_url(self.config.get("server_url", DEFAULT_CONFIG["server_url"])))
         self.theme_input = QLineEdit(self.config.get("theme", DEFAULT_CONFIG["theme"]))
+        self.cache_ttl_input = QLineEdit(str(self.config.get("manifest_cache_ttl_seconds", 60)))
+        self.workers_input = QLineEdit(str(self.config.get("download_workers", 3)))
+        self.timeout_input = QLineEdit(str(self.config.get("request_timeout_seconds", 30)))
         self.status_label = QLabel("")
 
         layout = QVBoxLayout(self)
         form_layout = QFormLayout()
         form_layout.addRow("Server URL:", self.server_url_input)
         form_layout.addRow("Theme:", self.theme_input)
+        form_layout.addRow("Manifest cache TTL seconds:", self.cache_ttl_input)
+        form_layout.addRow("Download workers:", self.workers_input)
+        form_layout.addRow("Request timeout seconds:", self.timeout_input)
         layout.addLayout(form_layout)
 
         test_btn = QPushButton("Test server")
@@ -236,12 +301,16 @@ class SettingsDialog(QDialog):
         config["server_url"] = normalize_url(self.server_url_input.text())
         theme = self.theme_input.text().strip().lower() or DEFAULT_CONFIG["theme"]
         config["theme"] = theme
+        config["manifest_cache_ttl_seconds"] = bounded_int(self.cache_ttl_input.text(), 60, 0, 86400)
+        config["download_workers"] = bounded_int(self.workers_input.text(), 3, 1, 8)
+        config["request_timeout_seconds"] = bounded_int(self.timeout_input.text(), 30, 5, 300)
         return config
 
     def test_server(self):
         try:
             server_url = normalize_url(self.server_url_input.text())
-            response = requests.get(f"{server_url}/project_by_key", params={"key": "__healthcheck__"}, timeout=5)
+            timeout = bounded_int(self.timeout_input.text(), 30, 5, 300)
+            response = requests.get(f"{server_url}/project_by_key", params={"key": "__healthcheck__"}, timeout=timeout)
             if response.status_code in {200, 404}:
                 self.status_label.setText("Server is reachable.")
             else:
@@ -581,6 +650,7 @@ class FlandosyncClient(QMainWindow):
             self.current_project["path"],
             self.current_project["manifest_url"],
             self.delete_extra_checkbox.isChecked(),
+            self.external_config,
         )
         self.worker.progress.connect(self.progress_bar.setValue)
         self.worker.log.connect(lambda msg: self.console.append(msg))

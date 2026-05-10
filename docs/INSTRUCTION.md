@@ -168,6 +168,9 @@ Click `Settings` in the client to edit:
 
 - server URL;
 - theme.
+- manifest cache TTL;
+- download worker count;
+- request timeout.
 
 The settings dialog also has a `Test server` button. It checks whether the configured Flandosync server is reachable.
 
@@ -176,6 +179,12 @@ Settings are stored in:
 ```text
 flandosync_settings.json
 ```
+
+`manifest_cache_ttl_seconds` controls how long the client may reuse a recently downloaded manifest. Set it to `0` to disable manifest caching.
+
+`download_workers` controls parallel downloads. Keep it low for small private servers. The recommended range is `2-4`.
+
+`request_timeout_seconds` controls HTTP request timeout.
 
 ## Using the Client
 
@@ -364,6 +373,7 @@ If the client downloads nothing:
 - regenerate the manifest;
 - open `manifest.json` and check that `files` is not empty;
 - make sure files are inside the selected modpack folder before running `-generate`.
+- if manifest caching is enabled, wait for the cache TTL or set `manifest_cache_ttl_seconds` to `0`.
 
 If files appear under `mods/mods`:
 

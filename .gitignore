@@ -12,6 +12,7 @@ server/keys.json
 server/modpacks/
 client/flandosync_settings.json
 client/flandosync_client.json
+client/manifest_cache/
 
 # Packaged releases
 release/

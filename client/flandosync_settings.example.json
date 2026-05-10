@@ -1,5 +1,8 @@
 {
     "server_url": "http://localhost:8000",
     "app_name": "Flandosync Client",
-    "theme": "dark"
+    "theme": "dark",
+    "manifest_cache_ttl_seconds": 60,
+    "download_workers": 3,
+    "request_timeout_seconds": 30
 }
