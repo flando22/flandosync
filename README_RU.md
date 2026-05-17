@@ -19,6 +19,11 @@ Flandosync - небольшая утилита для синхронизации
 - English: [docs/ROADMAP.md](docs/ROADMAP.md)
 - Русский: [docs/ROADMAP_RU.md](docs/ROADMAP_RU.md)
 
+План безопасности админпанели:
+
+- English: [docs/ADMIN_SECURITY.md](docs/ADMIN_SECURITY.md)
+- Русский: [docs/ADMIN_SECURITY_RU.md](docs/ADMIN_SECURITY_RU.md)
+
 История изменений: [CHANGELOG.md](CHANGELOG.md)
 
 ### Сервер

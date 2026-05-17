@@ -1,5 +1,12 @@
 # Changelog
 
+## v1.3.1
+
+- Added a modpack folder change action in the client context menu.
+- Replaced manual theme text entry with a theme selector.
+- Prevented long server test errors from stretching the settings dialog.
+- Added admin panel security planning docs.
+
 ## v1.3.0
 
 - Added manifest cache.

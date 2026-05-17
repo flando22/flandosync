@@ -21,6 +21,11 @@ Roadmap:
 - English: [docs/ROADMAP.md](docs/ROADMAP.md)
 - Russian: [docs/ROADMAP_RU.md](docs/ROADMAP_RU.md)
 
+Admin security planning:
+
+- English: [docs/ADMIN_SECURITY.md](docs/ADMIN_SECURITY.md)
+- Russian: [docs/ADMIN_SECURITY_RU.md](docs/ADMIN_SECURITY_RU.md)
+
 Release history: [CHANGELOG.md](CHANGELOG.md)
 
 ### Server

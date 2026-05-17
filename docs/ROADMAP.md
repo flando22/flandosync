@@ -12,6 +12,7 @@ This document tracks planned features and a recommended implementation order.
   - Optional checkbox: `Also permanently delete modpack files`.
   - Checkbox is disabled by default.
 - Export logs from the UI. Done.
+- Change the local modpack folder without removing the modpack. Done.
 - Better sync result summary. Done.
   - Downloaded files.
   - Skipped files.
@@ -22,9 +23,10 @@ This document tracks planned features and a recommended implementation order.
 
 - Settings dialog. Done.
 - Server URL setting. Done.
-- Theme setting. Done.
+- Theme selector. Done.
 - Save settings to `flandosync_settings.json`. Done.
 - Test server connection from the settings dialog. Done.
+- Prevent long test errors from stretching the dialog. Done.
 
 ## v1.3.0 - Stability And Performance
 
@@ -70,3 +72,5 @@ Separate Windows admin client for server maintenance:
 - Restart service when configured.
 
 Admin access must use separate authorization. The normal player key should not grant admin permissions.
+
+Detailed notes: [Admin Security](ADMIN_SECURITY.md).

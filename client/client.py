@@ -12,6 +12,7 @@ from PyQt6.QtGui import QAction
 from PyQt6.QtWidgets import (
     QApplication,
     QCheckBox,
+    QComboBox,
     QDialog,
     QDialogButtonBox,
     QFileDialog,
@@ -269,11 +270,19 @@ class SettingsDialog(QDialog):
         self.setWindowTitle("Settings")
         self.config = dict(config)
         self.server_url_input = QLineEdit(normalize_url(self.config.get("server_url", DEFAULT_CONFIG["server_url"])))
-        self.theme_input = QLineEdit(self.config.get("theme", DEFAULT_CONFIG["theme"]))
+        self.theme_input = QComboBox()
+        self.theme_input.addItem("Dark", "dark")
+        self.theme_input.addItem("Light", "light")
+        current_theme = str(self.config.get("theme", DEFAULT_CONFIG["theme"])).lower()
+        index = self.theme_input.findData(current_theme)
+        self.theme_input.setCurrentIndex(index if index >= 0 else 0)
         self.cache_ttl_input = QLineEdit(str(self.config.get("manifest_cache_ttl_seconds", 60)))
         self.workers_input = QLineEdit(str(self.config.get("download_workers", 3)))
         self.timeout_input = QLineEdit(str(self.config.get("request_timeout_seconds", 30)))
         self.status_label = QLabel("")
+        self.status_label.setWordWrap(True)
+        self.status_label.setMaximumWidth(520)
+        self.status_label.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
 
         layout = QVBoxLayout(self)
         form_layout = QFormLayout()
@@ -299,8 +308,7 @@ class SettingsDialog(QDialog):
     def get_config(self):
         config = {**DEFAULT_CONFIG, **self.config}
         config["server_url"] = normalize_url(self.server_url_input.text())
-        theme = self.theme_input.text().strip().lower() or DEFAULT_CONFIG["theme"]
-        config["theme"] = theme
+        config["theme"] = self.theme_input.currentData() or DEFAULT_CONFIG["theme"]
         config["manifest_cache_ttl_seconds"] = bounded_int(self.cache_ttl_input.text(), 60, 0, 86400)
         config["download_workers"] = bounded_int(self.workers_input.text(), 3, 1, 8)
         config["request_timeout_seconds"] = bounded_int(self.timeout_input.text(), 30, 5, 300)
@@ -313,10 +321,13 @@ class SettingsDialog(QDialog):
             response = requests.get(f"{server_url}/project_by_key", params={"key": "__healthcheck__"}, timeout=timeout)
             if response.status_code in {200, 404}:
                 self.status_label.setText("Server is reachable.")
+                self.status_label.setToolTip("")
             else:
                 self.status_label.setText(f"Server answered with HTTP {response.status_code}.")
+                self.status_label.setToolTip(response.text[:1000])
         except Exception as exc:
-            self.status_label.setText(f"Could not reach server: {exc}")
+            self.status_label.setText("Could not reach server. Hover this message for details.")
+            self.status_label.setToolTip(str(exc))
 
 
 class FlandosyncClient(QMainWindow):
@@ -358,7 +369,7 @@ class FlandosyncClient(QMainWindow):
         self.setStyleSheet(
             """
             QMainWindow, QWidget { background-color: #202124; color: #f3f4f6; }
-            QLineEdit, QListWidget, QTextEdit {
+            QComboBox, QLineEdit, QListWidget, QTextEdit {
                 background-color: #111827;
                 color: #f3f4f6;
                 border: 1px solid #374151;
@@ -527,10 +538,13 @@ class FlandosyncClient(QMainWindow):
         self.project_list.setCurrentItem(item)
         menu = QMenu(self)
         rename_action = QAction("Rename", self)
+        change_folder_action = QAction("Change folder", self)
         remove_action = QAction("Remove", self)
         rename_action.triggered.connect(self.rename_selected_project)
+        change_folder_action.triggered.connect(self.change_selected_project_folder)
         remove_action.triggered.connect(self.remove_selected_project)
         menu.addAction(rename_action)
+        menu.addAction(change_folder_action)
         menu.addAction(remove_action)
         menu.exec(self.project_list.mapToGlobal(position))
 
@@ -558,6 +572,28 @@ class FlandosyncClient(QMainWindow):
         self.project_list.setCurrentRow(index)
         self.current_project = project
         self.status_label.setText(f"Modpack: {self.project_display_name(project)}")
+
+    def change_selected_project_folder(self):
+        index = self.selected_project_index()
+        if index is None:
+            return
+
+        project = self.projects[index]
+        current_path = project.get("path", "")
+        new_path = QFileDialog.getExistingDirectory(
+            self,
+            "Choose modpack folder",
+            current_path if os.path.isdir(current_path) else os.path.expanduser("~"),
+        )
+        if not new_path:
+            return
+
+        project["path"] = new_path
+        self.save_config()
+        self.current_project = project
+        self.project_list.setCurrentRow(index)
+        self.status_label.setText(f"Modpack: {self.project_display_name(project)}")
+        self.console.append(f"Changed folder: {new_path}")
 
     def remove_selected_project(self):
         index = self.selected_project_index()
