@@ -91,6 +91,18 @@ modpacks/example-pack/config/some-config.toml
 python server.py -generate example-pack
 ```
 
+Можно сразу указать версию и changelog:
+
+```bash
+python server.py -generate example-pack -version 1.2.0 -changelog "Добавлены новые моды"
+```
+
+Для длинного changelog можно использовать UTF-8 файл:
+
+```bash
+python server.py -generate example-pack -version 1.2.0 -changelog-file changelog.txt
+```
+
 Команда создаёт или обновляет:
 
 ```text
@@ -107,10 +119,11 @@ keys.json
 
 ```bash
 cd server
-python server.py -generate example-pack
+python server.py -generate example-pack -version 1.2.1 -changelog "Обновлены моды"
 ```
 
 Игрокам не нужен новый клиент. Им достаточно снова нажать `SYNC`.
+Клиент предупредит игроков, если версия на сервере отличается от последней синхронизированной версии, и покажет changelog, если он есть.
 
 Сгенерированный ключ остаётся стабильным. Он переиспользуется из `key.txt` или `keys.json`.
 

@@ -53,10 +53,11 @@ server/modpacks/example-pack/config/example.toml
 After adding, removing, or changing files, regenerate the manifest:
 
 ```bash
-python server.py -generate example-pack
+python server.py -generate example-pack -version 1.2.1 -changelog "Updated mods"
 ```
 
 The generated access key is printed in the terminal and saved in `key.txt`.
+Clients warn players when the server version changes.
 
 ### Client
 

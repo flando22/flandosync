@@ -1,5 +1,12 @@
 # Changelog
 
+## v1.4.0
+
+- Added manifest versioning controls to the server.
+- Added optional manifest changelog text.
+- Added client-side update warnings when the server version differs from the last synced version.
+- The client now stores the last successfully synced modpack version.
+
 ## v1.3.1
 
 - Added a modpack folder change action in the client context menu.

@@ -34,3 +34,4 @@ Ship the executable together with a `flandosync_settings.json` file configured f
 - `Export logs` saves the console log and sync changes list to a text file.
 - `Settings` lets users edit the server URL, select the theme, and test server connectivity.
 - Manifest caching and limited parallel downloads are configurable in `Settings`.
+- The client stores the last synced modpack version and warns when the server version changes.

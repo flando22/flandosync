@@ -51,10 +51,11 @@ server/modpacks/example-pack/config/example.toml
 После добавления, удаления или замены файлов нужно заново сгенерировать манифест:
 
 ```bash
-python server.py -generate example-pack
+python server.py -generate example-pack -version 1.2.1 -changelog "Обновлены моды"
 ```
 
 Ключ доступа выводится в терминал и сохраняется в `key.txt`.
+Клиент предупреждает игроков, когда версия сборки на сервере меняется.
 
 ### Клиент
 

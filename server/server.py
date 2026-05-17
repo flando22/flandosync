@@ -82,17 +82,35 @@ class FlandosyncServer:
             f.write(key)
         return key
 
-    def generate_manifest(self, modpack_name):
+    def load_existing_manifest(self, modpack_path):
+        manifest_path = os.path.join(modpack_path, "manifest.json")
+        if not os.path.exists(manifest_path):
+            return {}
+
+        try:
+            with open(manifest_path, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except (OSError, json.JSONDecodeError):
+            return {}
+
+    def generate_manifest(self, modpack_name, version=None, changelog=None):
         modpack_path = os.path.join(self.config["modpacks_dir"], modpack_name)
         if not os.path.exists(modpack_path):
             os.makedirs(os.path.join(modpack_path, "mods"), exist_ok=True)
             os.makedirs(os.path.join(modpack_path, "config"), exist_ok=True)
             print(f"Created modpack structure for {modpack_name}")
 
+        existing_manifest = self.load_existing_manifest(modpack_path)
+        manifest_version = version or existing_manifest.get("version") or "1.0.0"
+        manifest_changelog = changelog
+        if manifest_changelog is None:
+            manifest_changelog = existing_manifest.get("changelog", "")
+
         manifest = {
             "name": modpack_name,
-            "version": "1.0.0",
+            "version": manifest_version,
             "generated_at": int(time.time()),
+            "changelog": manifest_changelog,
             "files": [],
         }
 
@@ -125,6 +143,7 @@ class FlandosyncServer:
         print("flandosync")
         print("Manifest generated successfully")
         print(f"Path: {manifest_path}")
+        print(f"Version: {manifest_version}")
         print(f"Key: {access_key}")
         print(f"Files: {len(manifest['files'])}")
         print("-" * 30)
@@ -223,13 +242,20 @@ class FlandosyncServer:
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Flandosync Server CLI")
     parser.add_argument("-generate", type=str, help="Generate a manifest for the named modpack")
+    parser.add_argument("-version", type=str, help="Set the modpack version written to manifest.json")
+    parser.add_argument("-changelog", type=str, help="Set a short changelog written to manifest.json")
+    parser.add_argument("-changelog-file", type=str, help="Read changelog text from a UTF-8 file")
     parser.add_argument("-serve", action="store_true", help="Start the HTTP server")
 
     args = parser.parse_args()
     server = FlandosyncServer()
 
     if args.generate:
-        server.generate_manifest(args.generate)
+        changelog = args.changelog
+        if args.changelog_file:
+            with open(args.changelog_file, "r", encoding="utf-8") as f:
+                changelog = f.read().strip()
+        server.generate_manifest(args.generate, version=args.version, changelog=changelog)
     elif args.serve:
         server.serve()
     else:

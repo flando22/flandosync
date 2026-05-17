@@ -34,6 +34,18 @@ Put files in it, then generate the manifest:
 python server.py -generate example-pack
 ```
 
+You can set a visible modpack version and changelog:
+
+```bash
+python server.py -generate example-pack -version 1.2.0 -changelog "Added new mods"
+```
+
+For longer notes, put the text in a UTF-8 file:
+
+```bash
+python server.py -generate example-pack -version 1.2.0 -changelog-file changelog.txt
+```
+
 Start the HTTP server:
 
 ```bash

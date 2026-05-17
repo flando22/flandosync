@@ -37,10 +37,10 @@ This document tracks planned features and a recommended implementation order.
 
 ## v1.4.0 - Modpack Versioning
 
-- Add modpack version to the manifest.
-- Store the last synced version on the client.
-- Warn users when an update is available.
-- Show changelog when available.
+- Add modpack version to the manifest. Done.
+- Store the last synced version on the client. Done.
+- Warn users when an update is available. Done.
+- Show changelog when available. Done.
 
 ## v1.5.0 - Access Limits
 

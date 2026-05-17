@@ -90,6 +90,18 @@ Generate the manifest:
 python server.py -generate example-pack
 ```
 
+Optionally set a version and changelog:
+
+```bash
+python server.py -generate example-pack -version 1.2.0 -changelog "Added new mods"
+```
+
+For longer changelogs:
+
+```bash
+python server.py -generate example-pack -version 1.2.0 -changelog-file changelog.txt
+```
+
 The command creates or updates:
 
 ```text
@@ -106,10 +118,11 @@ When you add, remove, or replace files, regenerate the manifest:
 
 ```bash
 cd server
-python server.py -generate example-pack
+python server.py -generate example-pack -version 1.2.1 -changelog "Updated mods"
 ```
 
 Players do not need a new client. They only need to press `SYNC` again.
+The client warns players when the server version differs from their last synced version and shows the changelog when it is present.
 
 The generated key stays stable. It is reused from `key.txt` or `keys.json`.
 

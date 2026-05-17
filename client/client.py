@@ -86,10 +86,18 @@ def bounded_int(value, default, minimum, maximum):
         return default
 
 
+def manifest_cache_path(manifest_url):
+    cache_dir = os.path.join(app_dir(), "manifest_cache")
+    os.makedirs(cache_dir, exist_ok=True)
+    cache_name = hashlib.sha256(manifest_url.encode("utf-8")).hexdigest() + ".json"
+    return os.path.join(cache_dir, cache_name)
+
+
 class SyncWorker(QThread):
     progress = pyqtSignal(int)
     log = pyqtSignal(str)
     result = pyqtSignal(str, str)
+    manifest_loaded = pyqtSignal(dict)
     finished = pyqtSignal(bool)
 
     def __init__(self, project_path, manifest_url, delete_extra=False, settings=None):
@@ -131,14 +139,8 @@ class SyncWorker(QThread):
                     time.sleep(0.5 * (attempt + 1))
         raise last_error
 
-    def manifest_cache_path(self, manifest_url):
-        cache_dir = os.path.join(app_dir(), "manifest_cache")
-        os.makedirs(cache_dir, exist_ok=True)
-        cache_name = hashlib.sha256(manifest_url.encode("utf-8")).hexdigest() + ".json"
-        return os.path.join(cache_dir, cache_name)
-
     def load_manifest(self, manifest_url):
-        cache_path = self.manifest_cache_path(manifest_url)
+        cache_path = manifest_cache_path(manifest_url)
         if self.manifest_cache_ttl > 0 and os.path.exists(cache_path):
             age = time.time() - os.path.getmtime(cache_path)
             if age <= self.manifest_cache_ttl:
@@ -220,6 +222,7 @@ class SyncWorker(QThread):
             self.log.emit("Loading manifest...")
             manifest_url = normalize_url(self.manifest_url)
             manifest = self.load_manifest(manifest_url)
+            self.manifest_loaded.emit(manifest)
 
             files = manifest.get("files", [])
             total_files = len(files)
@@ -339,6 +342,7 @@ class FlandosyncClient(QMainWindow):
         self.config_path = os.path.join(app_dir(), "flandosync_client.json")
         self.projects = self.load_config()
         self.current_project = None
+        self.pending_manifest = None
 
         self.init_ui()
         self.apply_theme()
@@ -399,6 +403,18 @@ class FlandosyncClient(QMainWindow):
         if alias and alias != name:
             return f"{alias} ({name})"
         return name
+
+    def project_version_label(self, project):
+        current_version = project.get("current_version") or project.get("version") or "unknown"
+        last_synced_version = project.get("last_synced_version")
+        if last_synced_version:
+            return f"server {current_version}, synced {last_synced_version}"
+        return f"server {current_version}, not synced yet"
+
+    def update_project_status(self, project):
+        self.status_label.setText(
+            f"Modpack: {self.project_display_name(project)}\nVersion: {self.project_version_label(project)}"
+        )
 
     def refresh_project_list(self):
         self.project_list.clear()
@@ -510,6 +526,9 @@ class FlandosyncClient(QMainWindow):
             if path:
                 new_project = {
                     "name": manifest["name"],
+                    "current_version": manifest.get("version", "1.0.0"),
+                    "last_synced_version": "",
+                    "changelog": manifest.get("changelog", ""),
                     "key": key,
                     "path": path,
                     "manifest_url": manifest_url,
@@ -526,7 +545,7 @@ class FlandosyncClient(QMainWindow):
         index = item.data(Qt.ItemDataRole.UserRole)
         self.current_project = self.projects[index] if index is not None else None
         if self.current_project:
-            self.status_label.setText(f"Modpack: {self.project_display_name(self.current_project)}")
+            self.update_project_status(self.current_project)
             self.sync_btn.setEnabled(True)
             self.console.append(f"Selected folder: {self.current_project['path']}")
 
@@ -571,7 +590,7 @@ class FlandosyncClient(QMainWindow):
         self.refresh_project_list()
         self.project_list.setCurrentRow(index)
         self.current_project = project
-        self.status_label.setText(f"Modpack: {self.project_display_name(project)}")
+        self.update_project_status(project)
 
     def change_selected_project_folder(self):
         index = self.selected_project_index()
@@ -592,8 +611,43 @@ class FlandosyncClient(QMainWindow):
         self.save_config()
         self.current_project = project
         self.project_list.setCurrentRow(index)
-        self.status_label.setText(f"Modpack: {self.project_display_name(project)}")
+        self.update_project_status(project)
         self.console.append(f"Changed folder: {new_path}")
+
+    def refresh_project_manifest_info(self, project):
+        manifest_url = normalize_url(project["manifest_url"])
+        response = requests.get(manifest_url, timeout=15)
+        response.raise_for_status()
+        manifest = response.json()
+        project["current_version"] = manifest.get("version", project.get("current_version", "1.0.0"))
+        project["changelog"] = manifest.get("changelog", "")
+        project["name"] = manifest.get("name", project.get("name", "Unnamed"))
+        with open(manifest_cache_path(manifest_url), "w", encoding="utf-8") as f:
+            json.dump(manifest, f, ensure_ascii=False, indent=4)
+        self.save_config()
+        return manifest
+
+    def warn_if_update_available(self, project):
+        try:
+            manifest = self.refresh_project_manifest_info(project)
+        except Exception as exc:
+            self.console.append(f"Could not check modpack version: {exc}")
+            return
+
+        current_version = manifest.get("version", "1.0.0")
+        last_synced_version = project.get("last_synced_version")
+        if last_synced_version and current_version != last_synced_version:
+            changelog = str(manifest.get("changelog", "")).strip()
+            message = (
+                f"Update available for {self.project_display_name(project)}.\n\n"
+                f"Installed: {last_synced_version}\n"
+                f"Server: {current_version}"
+            )
+            if changelog:
+                message += f"\n\nChanges:\n{changelog}"
+            QMessageBox.information(self, "Modpack update", message)
+
+        self.update_project_status(project)
 
     def remove_selected_project(self):
         index = self.selected_project_index()
@@ -681,6 +735,8 @@ class FlandosyncClient(QMainWindow):
         self.sync_btn.setEnabled(False)
         self.progress_bar.setValue(0)
         self.change_list.clear()
+        self.pending_manifest = None
+        self.warn_if_update_available(self.current_project)
 
         self.worker = SyncWorker(
             self.current_project["path"],
@@ -691,12 +747,28 @@ class FlandosyncClient(QMainWindow):
         self.worker.progress.connect(self.progress_bar.setValue)
         self.worker.log.connect(lambda msg: self.console.append(msg))
         self.worker.result.connect(lambda kind, path: self.change_list.addItem(f"[{kind}] {path}"))
+        self.worker.manifest_loaded.connect(self.on_manifest_loaded)
         self.worker.finished.connect(self.on_sync_finished)
         self.worker.start()
+
+    def on_manifest_loaded(self, manifest):
+        self.pending_manifest = manifest
 
     def on_sync_finished(self, success):
         self.sync_btn.setEnabled(True)
         if success:
+            if self.current_project and self.pending_manifest:
+                self.current_project["current_version"] = self.pending_manifest.get(
+                    "version", self.current_project.get("current_version", "1.0.0")
+                )
+                self.current_project["last_synced_version"] = self.current_project["current_version"]
+                self.current_project["changelog"] = self.pending_manifest.get("changelog", "")
+                self.current_project["name"] = self.pending_manifest.get(
+                    "name", self.current_project.get("name", "Unnamed")
+                )
+                self.save_config()
+                self.refresh_project_list()
+                self.update_project_status(self.current_project)
             QMessageBox.information(self, "Done", "Sync completed.")
 
 
