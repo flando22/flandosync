@@ -1,5 +1,12 @@
 # Changelog
 
+## v1.5.1
+
+- Fixed token handling for adding and syncing protected modpacks.
+- The client now stores manifest URLs without temporary tokens and sends tokens separately.
+- The server now accepts download tokens through query parameters and HTTP headers.
+- Added `manifest_url_with_token` for compatibility with URL-based clients.
+
 ## v1.5.0
 
 - Added temporary download tokens returned by `/project_by_key`.

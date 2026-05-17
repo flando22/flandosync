@@ -217,8 +217,16 @@ class FlandosyncServer:
                     }
                 return token, expires_at
 
-            def token_for_query(self, query):
-                return query.get("download_token", query.get("token", [None]))[0]
+            def token_for_request(self, query):
+                query_token = query.get("download_token", query.get("token", [None]))[0]
+                if query_token:
+                    return query_token
+
+                auth_header = self.headers.get("Authorization", "")
+                if auth_header.lower().startswith("bearer "):
+                    return auth_header.split(" ", 1)[1].strip()
+
+                return self.headers.get("X-Flandosync-Token")
 
             def validate_download_token(self, server, modpack, token):
                 if not self.config_bool(server, "require_download_token"):
@@ -276,7 +284,7 @@ class FlandosyncServer:
                     manifest = json.load(f)
 
                 query = parse_qs(urlparse(self.path).query)
-                download_token = self.token_for_query(query)
+                download_token = self.token_for_request(query)
                 base_url = self.external_base_url(server)
                 for file_info in manifest.get("files", []):
                     file_url = file_info.get("url", "")
@@ -324,10 +332,12 @@ class FlandosyncServer:
                         manifest_url = (
                             f"{self.external_base_url(server)}/modpacks/{encoded_modpack}/manifest.json"
                         )
-                        manifest_url = self.add_query_param(manifest_url, "download_token", token)
                         self.send_json(
                             {
                                 "manifest_url": manifest_url,
+                                "manifest_url_with_token": self.add_query_param(
+                                    manifest_url, "download_token", token
+                                ),
                                 "download_token": token,
                                 "download_token_expires_at": expires_at,
                             }
@@ -349,7 +359,7 @@ class FlandosyncServer:
 
                 modpack, _ = download_parts
                 query = parse_qs(parsed_url.query)
-                token = self.token_for_query(query)
+                token = self.token_for_request(query)
                 is_valid, error = self.validate_download_token(server, modpack, token)
                 if not is_valid:
                     status, message = error

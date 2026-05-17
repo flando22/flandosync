@@ -102,6 +102,22 @@ def add_query_param(url, key, value):
     return urlunparse(parsed._replace(query=urlencode(query, doseq=True)))
 
 
+def auth_headers(download_token):
+    if not download_token:
+        return {}
+    return {
+        "Authorization": f"Bearer {download_token}",
+        "X-Flandosync-Token": download_token,
+    }
+
+
+def strip_query_param(url, key):
+    parsed = urlparse(url)
+    query = parse_qs(parsed.query)
+    query.pop(key, None)
+    return urlunparse(parsed._replace(query=urlencode(query, doseq=True)))
+
+
 class SyncWorker(QThread):
     progress = pyqtSignal(int)
     log = pyqtSignal(str)
@@ -138,9 +154,10 @@ class SyncWorker(QThread):
 
     def request_with_retries(self, method, url, **kwargs):
         last_error = None
+        headers = {**auth_headers(self.download_token), **kwargs.pop("headers", {})}
         for attempt in range(3):
             try:
-                response = requests.request(method, url, timeout=self.timeout, **kwargs)
+                response = requests.request(method, url, timeout=self.timeout, headers=headers, **kwargs)
                 response.raise_for_status()
                 return response
             except requests.RequestException as exc:
@@ -150,7 +167,10 @@ class SyncWorker(QThread):
         raise last_error
 
     def load_manifest(self, manifest_url):
-        cache_path = manifest_cache_path(manifest_url)
+        cache_key_url = strip_query_param(manifest_url, "download_token")
+        if self.download_token and "download_token" not in parse_qs(urlparse(manifest_url).query):
+            manifest_url = add_query_param(manifest_url, "download_token", self.download_token)
+        cache_path = manifest_cache_path(cache_key_url)
         if self.manifest_cache_ttl > 0 and os.path.exists(cache_path):
             age = time.time() - os.path.getmtime(cache_path)
             if age <= self.manifest_cache_ttl:
@@ -527,13 +547,17 @@ class FlandosyncClient(QMainWindow):
             response.raise_for_status()
 
             project_info = response.json()
-            manifest_url = project_info["manifest_url"]
+            manifest_url = project_info.get("manifest_url_with_token") or project_info["manifest_url"]
             if manifest_url.startswith("/"):
                 manifest_url = urljoin(server_url + "/", manifest_url)
+            download_token = project_info.get("download_token", "")
+            if download_token and "download_token" not in parse_qs(urlparse(manifest_url).query):
+                manifest_url = add_query_param(manifest_url, "download_token", download_token)
 
-            manifest_response = requests.get(manifest_url, timeout=15)
+            manifest_response = requests.get(manifest_url, timeout=15, headers=auth_headers(download_token))
             manifest_response.raise_for_status()
             manifest = manifest_response.json()
+            stored_manifest_url = strip_query_param(manifest_url, "download_token")
 
             path = QFileDialog.getExistingDirectory(self, "Choose install folder")
             if path:
@@ -542,11 +566,11 @@ class FlandosyncClient(QMainWindow):
                     "current_version": manifest.get("version", "1.0.0"),
                     "last_synced_version": "",
                     "changelog": manifest.get("changelog", ""),
-                    "download_token": project_info.get("download_token", ""),
+                    "download_token": download_token,
                     "download_token_expires_at": project_info.get("download_token_expires_at", 0),
                     "key": key,
                     "path": path,
-                    "manifest_url": manifest_url,
+                    "manifest_url": stored_manifest_url,
                 }
                 self.projects.append(new_project)
                 self.save_config()
@@ -631,7 +655,10 @@ class FlandosyncClient(QMainWindow):
 
     def refresh_project_manifest_info(self, project):
         manifest_url = normalize_url(project["manifest_url"])
-        response = requests.get(manifest_url, timeout=15)
+        download_token = project.get("download_token", "")
+        if download_token and "download_token" not in parse_qs(urlparse(manifest_url).query):
+            manifest_url = add_query_param(manifest_url, "download_token", download_token)
+        response = requests.get(manifest_url, timeout=15, headers=auth_headers(download_token))
         response.raise_for_status()
         manifest = response.json()
         project["current_version"] = manifest.get("version", project.get("current_version", "1.0.0"))
@@ -655,6 +682,7 @@ class FlandosyncClient(QMainWindow):
         if manifest_url:
             if manifest_url.startswith("/"):
                 manifest_url = urljoin(server_url + "/", manifest_url)
+            manifest_url = strip_query_param(manifest_url, "download_token")
             project["manifest_url"] = manifest_url
         project["download_token"] = project_info.get("download_token", "")
         project["download_token_expires_at"] = project_info.get("download_token_expires_at", 0)
