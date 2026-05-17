@@ -6,6 +6,7 @@ Flandosync - небольшая утилита для синхронизации
 
 - `server/` генерирует манифесты сборок и раздаёт файлы по HTTP.
 - `client/` - PyQt-лаунчер, который скачивает файлы из манифеста.
+- `admin/` - опциональная SSH-утилита для доверенного обслуживания сервера.
 
 ## Быстрый Старт
 
@@ -25,6 +26,11 @@ Flandosync - небольшая утилита для синхронизации
 - Русский: [docs/ADMIN_SECURITY_RU.md](docs/ADMIN_SECURITY_RU.md)
 
 История изменений: [CHANGELOG.md](CHANGELOG.md)
+
+Документация админского клиента:
+
+- English: [admin/README.md](admin/README.md)
+- Русский: [admin/README_RU.md](admin/README_RU.md)
 
 ### Сервер
 

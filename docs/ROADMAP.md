@@ -63,13 +63,16 @@ Recommended approach:
 
 Separate Windows admin client for server maintenance:
 
-- Upload mods.
-- Delete mods.
-- Regenerate manifests.
-- Manage keys.
-- Update modpack version.
-- Publish changelog.
-- Restart service when configured.
+- Connect over SSH instead of public admin HTTP API. Done.
+- Test SSH access. Done.
+- List modpacks. Done.
+- Regenerate manifests. Done.
+- Update modpack version. Done.
+- Publish short changelog. Done.
+- Restart service when configured. Done.
+- Upload mods. Planned.
+- Delete mods. Planned.
+- Manage keys. Planned.
 
 Admin access must use separate authorization. The normal player key should not grant admin permissions.
 

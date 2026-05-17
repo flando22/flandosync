@@ -1,0 +1,10 @@
+{
+    "app_name": "Flandosync Admin",
+    "ssh_host": "example.com",
+    "ssh_port": 22,
+    "ssh_user": "flandosync-admin",
+    "ssh_key_path": "",
+    "remote_project_dir": "/opt/flandosync",
+    "python_command": "python3",
+    "service_name": ""
+}

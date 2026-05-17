@@ -8,6 +8,7 @@ It has two parts:
 
 - `server/` generates modpack manifests and serves files over HTTP.
 - `client/` is a PyQt desktop launcher that downloads files listed in a manifest.
+- `admin/` is an optional SSH-based desktop tool for trusted server maintenance.
 
 ## Quick Start
 
@@ -27,6 +28,11 @@ Admin security planning:
 - Russian: [docs/ADMIN_SECURITY_RU.md](docs/ADMIN_SECURITY_RU.md)
 
 Release history: [CHANGELOG.md](CHANGELOG.md)
+
+Admin client docs:
+
+- English: [admin/README.md](admin/README.md)
+- Russian: [admin/README_RU.md](admin/README_RU.md)
 
 ### Server
 

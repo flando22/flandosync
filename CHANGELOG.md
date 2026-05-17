@@ -1,5 +1,12 @@
 # Changelog
 
+## v2.0.0
+
+- Added a separate SSH-based admin client MVP.
+- Admin client can test SSH access, list modpacks, generate manifests, set versions, publish short changelog text, and restart a configured service with confirmation.
+- Added admin client settings example and documentation in English and Russian.
+- Kept admin maintenance separate from the player client and public HTTP API.
+
 ## v1.5.1
 
 - Fixed token handling for adding and syncing protected modpacks.
