@@ -1,5 +1,13 @@
 # Changelog
 
+## v1.5.0
+
+- Added temporary download tokens returned by `/project_by_key`.
+- File downloads now require a valid download token by default.
+- Added per-token concurrent download limits.
+- Added token expiration settings.
+- Blocked direct HTTP access to sensitive server files such as keys and configs.
+
 ## v1.4.0
 
 - Added manifest versioning controls to the server.

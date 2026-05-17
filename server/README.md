@@ -14,11 +14,16 @@ Edit `config.json`:
 {
     "server_url": "http://your-host.example:8000",
     "modpacks_dir": "./modpacks",
-    "port": 8000
+    "port": 8000,
+    "require_download_token": true,
+    "download_token_ttl_seconds": 3600,
+    "max_concurrent_downloads_per_token": 3
 }
 ```
 
 `server_url` is a fallback URL. When clients connect through a domain, reverse proxy, or local IP, the server uses the incoming `Host` header to generate matching manifest links.
+
+Download files require temporary tokens by default. The client gets a token from `/project_by_key`, and the server limits how many parallel downloads may use the same token.
 
 ## Add a Modpack
 

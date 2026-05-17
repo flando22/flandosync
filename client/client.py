@@ -4,7 +4,7 @@ import os
 import sys
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from urllib.parse import urljoin
+from urllib.parse import parse_qs, urlencode, urljoin, urlparse, urlunparse
 
 import requests
 from PyQt6.QtCore import Qt, QThread, pyqtSignal
@@ -93,6 +93,15 @@ def manifest_cache_path(manifest_url):
     return os.path.join(cache_dir, cache_name)
 
 
+def add_query_param(url, key, value):
+    if not value:
+        return url
+    parsed = urlparse(url)
+    query = parse_qs(parsed.query)
+    query[key] = [value]
+    return urlunparse(parsed._replace(query=urlencode(query, doseq=True)))
+
+
 class SyncWorker(QThread):
     progress = pyqtSignal(int)
     log = pyqtSignal(str)
@@ -100,11 +109,12 @@ class SyncWorker(QThread):
     manifest_loaded = pyqtSignal(dict)
     finished = pyqtSignal(bool)
 
-    def __init__(self, project_path, manifest_url, delete_extra=False, settings=None):
+    def __init__(self, project_path, manifest_url, delete_extra=False, settings=None, download_token=None):
         super().__init__()
         self.project_path = project_path
         self.manifest_url = manifest_url
         self.delete_extra = delete_extra
+        self.download_token = download_token
         self.settings = {**DEFAULT_CONFIG, **(settings or {})}
         self.timeout = bounded_int(self.settings.get("request_timeout_seconds"), 30, 5, 300)
         self.download_workers = bounded_int(self.settings.get("download_workers"), 3, 1, 8)
@@ -205,6 +215,8 @@ class SyncWorker(QThread):
         rel_path = file_info["path"]
         remote_hash = file_info["sha256"]
         download_url = urljoin(manifest_url, file_info["url"])
+        if self.download_token and "download_token" not in parse_qs(urlparse(download_url).query):
+            download_url = add_query_param(download_url, "download_token", self.download_token)
         local_path = self.safe_local_path(rel_path)
 
         os.makedirs(os.path.dirname(local_path), exist_ok=True)
@@ -514,7 +526,8 @@ class FlandosyncClient(QMainWindow):
             response = requests.get(f"{server_url}/project_by_key", params={"key": key}, timeout=10)
             response.raise_for_status()
 
-            manifest_url = response.json()["manifest_url"]
+            project_info = response.json()
+            manifest_url = project_info["manifest_url"]
             if manifest_url.startswith("/"):
                 manifest_url = urljoin(server_url + "/", manifest_url)
 
@@ -529,6 +542,8 @@ class FlandosyncClient(QMainWindow):
                     "current_version": manifest.get("version", "1.0.0"),
                     "last_synced_version": "",
                     "changelog": manifest.get("changelog", ""),
+                    "download_token": project_info.get("download_token", ""),
+                    "download_token_expires_at": project_info.get("download_token_expires_at", 0),
                     "key": key,
                     "path": path,
                     "manifest_url": manifest_url,
@@ -627,8 +642,27 @@ class FlandosyncClient(QMainWindow):
         self.save_config()
         return manifest
 
+    def refresh_project_access(self, project):
+        key = project.get("key", "")
+        if not key:
+            return
+
+        server_url = normalize_url(self.external_config.get("server_url", "http://localhost:8000"))
+        response = requests.get(f"{server_url}/project_by_key", params={"key": key}, timeout=10)
+        response.raise_for_status()
+        project_info = response.json()
+        manifest_url = project_info.get("manifest_url")
+        if manifest_url:
+            if manifest_url.startswith("/"):
+                manifest_url = urljoin(server_url + "/", manifest_url)
+            project["manifest_url"] = manifest_url
+        project["download_token"] = project_info.get("download_token", "")
+        project["download_token_expires_at"] = project_info.get("download_token_expires_at", 0)
+        self.save_config()
+
     def warn_if_update_available(self, project):
         try:
+            self.refresh_project_access(project)
             manifest = self.refresh_project_manifest_info(project)
         except Exception as exc:
             self.console.append(f"Could not check modpack version: {exc}")
@@ -743,6 +777,7 @@ class FlandosyncClient(QMainWindow):
             self.current_project["manifest_url"],
             self.delete_extra_checkbox.isChecked(),
             self.external_config,
+            self.current_project.get("download_token", ""),
         )
         self.worker.progress.connect(self.progress_bar.setValue)
         self.worker.log.connect(lambda msg: self.console.append(msg))

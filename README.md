@@ -85,4 +85,6 @@ When enabled, it removes files inside synced manifest roots such as `mods/` or `
 
 Flandosync access keys are simple shared tokens. Do not publish your real `keys.json`, generated `key.txt`, private modpack files, IP addresses, or domain-specific configs.
 
+File downloads use temporary download tokens by default. The player access key is used to request a short-lived token, and the server limits concurrent downloads per token.
+
 For public GitHub repositories, commit only the example configs.

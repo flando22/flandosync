@@ -35,3 +35,4 @@ Ship the executable together with a `flandosync_settings.json` file configured f
 - `Settings` lets users edit the server URL, select the theme, and test server connectivity.
 - Manifest caching and limited parallel downloads are configurable in `Settings`.
 - The client stores the last synced modpack version and warns when the server version changes.
+- Before sync, the client refreshes the temporary download token used for protected file downloads.

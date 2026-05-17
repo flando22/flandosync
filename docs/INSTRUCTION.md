@@ -56,7 +56,10 @@ Edit `config.json`:
 {
     "server_url": "http://localhost:8000",
     "modpacks_dir": "./modpacks",
-    "port": 8000
+    "port": 8000,
+    "require_download_token": true,
+    "download_token_ttl_seconds": 3600,
+    "max_concurrent_downloads_per_token": 3
 }
 ```
 
@@ -65,8 +68,13 @@ Fields:
 - `server_url`: fallback URL used when the HTTP request does not include a `Host` header.
 - `modpacks_dir`: folder where modpack folders live.
 - `port`: HTTP port to listen on.
+- `require_download_token`: require temporary tokens for file downloads.
+- `download_token_ttl_seconds`: token lifetime after `/project_by_key`.
+- `max_concurrent_downloads_per_token`: parallel file downloads allowed for one token.
 
 The server also supports both LAN and public access. When a client connects through a LAN IP, the server returns LAN links. When a client connects through a domain, the server returns domain links. This is based on the incoming HTTP `Host` header.
+
+By default, modpack files cannot be downloaded directly without a temporary token. The client requests this token automatically when the player adds a modpack or starts sync.
 
 ## Creating a Modpack
 

@@ -57,7 +57,10 @@ cp config.example.json config.json
 {
     "server_url": "http://localhost:8000",
     "modpacks_dir": "./modpacks",
-    "port": 8000
+    "port": 8000,
+    "require_download_token": true,
+    "download_token_ttl_seconds": 3600,
+    "max_concurrent_downloads_per_token": 3
 }
 ```
 
@@ -66,8 +69,13 @@ cp config.example.json config.json
 - `server_url`: запасной адрес сервера, если в HTTP-запросе нет заголовка `Host`.
 - `modpacks_dir`: папка, где лежат сборки.
 - `port`: HTTP-порт сервера.
+- `require_download_token`: требовать временный token для скачивания файлов.
+- `download_token_ttl_seconds`: срок жизни token после `/project_by_key`.
+- `max_concurrent_downloads_per_token`: лимит параллельных скачиваний для одного token.
 
 Сервер поддерживает и локальный доступ, и публичный доступ. Если клиент приходит по локальному IP, сервер отдаёт локальные ссылки. Если клиент приходит через домен, сервер отдаёт ссылки с доменом. Это делается через HTTP-заголовок `Host`.
+
+По умолчанию файлы сборки нельзя скачать напрямую без временного token. Клиент получает этот token автоматически при добавлении сборки и перед синхронизацией.
 
 ## Создание Сборки
 

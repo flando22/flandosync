@@ -46,18 +46,18 @@ This document tracks planned features and a recommended implementation order.
 
 Possible approaches:
 
-- A second secret key for downloads.
-- Separate add-key and temporary download-token.
-- Server-side concurrent download limits.
-- Per-key rate limits.
-- Clear server errors instead of crashes.
+- A second secret key for downloads. Replaced by temporary download tokens.
+- Separate add-key and temporary download-token. Done.
+- Server-side concurrent download limits. Done.
+- Per-key rate limits. Partially done through per-token limits.
+- Clear server errors instead of crashes. Done.
 
 Recommended approach:
 
-1. `/project_by_key` accepts the main key.
-2. Server returns a temporary download token.
-3. File downloads require that token.
-4. Token has expiration and concurrency limits.
+1. `/project_by_key` accepts the main key. Done.
+2. Server returns a temporary download token. Done.
+3. File downloads require that token. Done by default.
+4. Token has expiration and concurrency limits. Done.
 
 ## v2.0.0 - Admin Client
 

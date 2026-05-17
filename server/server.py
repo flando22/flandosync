@@ -3,10 +3,12 @@ import hashlib
 import json
 import os
 import secrets
+import threading
 import time
 from functools import partial
-from http.server import HTTPServer, SimpleHTTPRequestHandler
-from urllib.parse import parse_qs, quote, unquote, urljoin, urlparse
+from http import HTTPStatus
+from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
+from urllib.parse import parse_qs, quote, urlencode, unquote, urljoin, urlparse, urlunparse
 
 
 class FlandosyncServer:
@@ -27,6 +29,9 @@ class FlandosyncServer:
             "server_url": "http://localhost:8000",
             "modpacks_dir": "./modpacks",
             "port": 8000,
+            "require_download_token": True,
+            "download_token_ttl_seconds": 3600,
+            "max_concurrent_downloads_per_token": 3,
         }
 
         if os.path.exists(self.config_path):
@@ -155,6 +160,9 @@ class FlandosyncServer:
         config_path = self.config_path
 
         class FlandoHandler(SimpleHTTPRequestHandler):
+            download_tokens = {}
+            token_lock = threading.Lock()
+
             def external_base_url(self, server):
                 host = self.headers.get("Host")
                 if host:
@@ -171,6 +179,83 @@ class FlandosyncServer:
                 self.send_header("Content-Length", str(len(body)))
                 self.end_headers()
                 self.wfile.write(body)
+
+            def send_text(self, body_text, status=200):
+                body = body_text.encode("utf-8")
+                self.send_response(status)
+                self.send_header("Content-Type", "text/plain; charset=utf-8")
+                self.send_header("Content-Length", str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
+
+            def config_bool(self, server, key):
+                value = server.config.get(key)
+                if isinstance(value, bool):
+                    return value
+                return str(value).strip().lower() in {"1", "true", "yes", "on"}
+
+            def cleanup_tokens(self):
+                now = time.time()
+                with self.token_lock:
+                    expired = [
+                        token for token, data in self.download_tokens.items()
+                        if data["expires_at"] <= now and data["active"] <= 0
+                    ]
+                    for token in expired:
+                        self.download_tokens.pop(token, None)
+
+            def create_download_token(self, server, modpack):
+                ttl = int(server.config.get("download_token_ttl_seconds", 3600))
+                token = secrets.token_urlsafe(32)
+                expires_at = int(time.time() + ttl)
+                self.cleanup_tokens()
+                with self.token_lock:
+                    self.download_tokens[token] = {
+                        "modpack": modpack,
+                        "expires_at": expires_at,
+                        "active": 0,
+                    }
+                return token, expires_at
+
+            def token_for_query(self, query):
+                return query.get("download_token", query.get("token", [None]))[0]
+
+            def validate_download_token(self, server, modpack, token):
+                if not self.config_bool(server, "require_download_token"):
+                    return True, None
+                if not token:
+                    return False, (HTTPStatus.UNAUTHORIZED, "Missing download token")
+
+                now = time.time()
+                max_active = int(server.config.get("max_concurrent_downloads_per_token", 3))
+                with self.token_lock:
+                    token_data = self.download_tokens.get(token)
+                    if not token_data:
+                        return False, (HTTPStatus.UNAUTHORIZED, "Invalid download token")
+                    if token_data["expires_at"] <= now:
+                        if token_data["active"] <= 0:
+                            self.download_tokens.pop(token, None)
+                        return False, (HTTPStatus.UNAUTHORIZED, "Expired download token")
+                    if token_data["modpack"] != modpack:
+                        return False, (HTTPStatus.FORBIDDEN, "Download token is for a different modpack")
+                    if token_data["active"] >= max_active:
+                        return False, (HTTPStatus.TOO_MANY_REQUESTS, "Too many active downloads for this token")
+                    token_data["active"] += 1
+                return True, None
+
+            def release_download_token(self, token):
+                if not token:
+                    return
+                with self.token_lock:
+                    token_data = self.download_tokens.get(token)
+                    if token_data:
+                        token_data["active"] = max(0, token_data["active"] - 1)
+
+            def add_query_param(self, url, key, value):
+                parsed = urlparse(url)
+                query = parse_qs(parsed.query)
+                query[key] = [value]
+                return urlunparse(parsed._replace(query=urlencode(query, doseq=True)))
 
             def send_dynamic_manifest(self, server, request_path):
                 parts = request_path.strip("/").split("/")
@@ -190,6 +275,8 @@ class FlandosyncServer:
                 with open(manifest_path, "r", encoding="utf-8") as f:
                     manifest = json.load(f)
 
+                query = parse_qs(urlparse(self.path).query)
+                download_token = self.token_for_query(query)
                 base_url = self.external_base_url(server)
                 for file_info in manifest.get("files", []):
                     file_url = file_info.get("url", "")
@@ -197,9 +284,29 @@ class FlandosyncServer:
                         file_info["url"] = base_url + file_url
                     elif not file_url.startswith(("http://", "https://")):
                         file_info["url"] = urljoin(base_url + "/", file_url)
+                    if download_token:
+                        file_info["url"] = self.add_query_param(
+                            file_info["url"], "download_token", download_token
+                        )
 
                 self.send_json(manifest)
                 return True
+
+            def modpack_download_parts(self, request_path):
+                parts = request_path.strip("/").split("/")
+                if len(parts) < 3 or parts[0] != "modpacks":
+                    return None
+                modpack = unquote(parts[1])
+                rel_path = "/".join(parts[2:])
+                if rel_path in {"manifest.json", "key.txt"}:
+                    return None
+                return modpack, rel_path
+
+            def is_allowed_public_file(self, request_path):
+                if request_path in {"", "/"}:
+                    return False
+                parts = request_path.strip("/").split("/")
+                return len(parts) == 3 and parts[0] == "modpacks" and parts[2] == "manifest.json"
 
             def do_GET(self):
                 parsed_url = urlparse(self.path)
@@ -213,27 +320,49 @@ class FlandosyncServer:
                     if key in server.keys:
                         modpack = server.keys[key]
                         encoded_modpack = quote(modpack, safe="")
+                        token, expires_at = self.create_download_token(server, modpack)
                         manifest_url = (
                             f"{self.external_base_url(server)}/modpacks/{encoded_modpack}/manifest.json"
                         )
-                        self.send_json({"manifest_url": manifest_url})
+                        manifest_url = self.add_query_param(manifest_url, "download_token", token)
+                        self.send_json(
+                            {
+                                "manifest_url": manifest_url,
+                                "download_token": token,
+                                "download_token_expires_at": expires_at,
+                            }
+                        )
                     else:
-                        body = b"Key not found"
-                        self.send_response(404)
-                        self.send_header("Content-Type", "text/plain; charset=utf-8")
-                        self.send_header("Content-Length", str(len(body)))
-                        self.end_headers()
-                        self.wfile.write(body)
+                        self.send_text("Key not found", HTTPStatus.NOT_FOUND)
                     return
 
                 server = FlandosyncServer(config_path)
                 if self.send_dynamic_manifest(server, request_path):
                     return
 
-                return super().do_GET()
+                download_parts = self.modpack_download_parts(request_path)
+                if not download_parts:
+                    if self.is_allowed_public_file(request_path):
+                        return super().do_GET()
+                    self.send_text("Not found", HTTPStatus.NOT_FOUND)
+                    return
+
+                modpack, _ = download_parts
+                query = parse_qs(parsed_url.query)
+                token = self.token_for_query(query)
+                is_valid, error = self.validate_download_token(server, modpack, token)
+                if not is_valid:
+                    status, message = error
+                    self.send_text(message, status)
+                    return
+
+                try:
+                    return super().do_GET()
+                finally:
+                    self.release_download_token(token)
 
         handler = partial(FlandoHandler, directory=server_root)
-        httpd = HTTPServer(server_address, handler)
+        httpd = ThreadingHTTPServer(server_address, handler)
         print(f"Flandosync server listening on port {port}")
         print(f"Serving root: {server_root}")
         httpd.serve_forever()

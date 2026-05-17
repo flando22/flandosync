@@ -1,5 +1,8 @@
 {
     "server_url": "http://localhost:8000",
     "modpacks_dir": "./modpacks",
-    "port": 8000
+    "port": 8000,
+    "require_download_token": true,
+    "download_token_ttl_seconds": 3600,
+    "max_concurrent_downloads_per_token": 3
 }
