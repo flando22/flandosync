@@ -59,7 +59,11 @@ Edit `config.json`:
     "port": 8000,
     "require_download_token": true,
     "download_token_ttl_seconds": 3600,
-    "max_concurrent_downloads_per_token": 3
+    "max_concurrent_downloads_per_token": 3,
+    "admin_enabled": false,
+    "admin_host": "127.0.0.1",
+    "admin_port": 8010,
+    "admin_token": ""
 }
 ```
 
@@ -71,10 +75,22 @@ Fields:
 - `require_download_token`: require temporary tokens for file downloads.
 - `download_token_ttl_seconds`: token lifetime after `/project_by_key`.
 - `max_concurrent_downloads_per_token`: parallel file downloads allowed for one token.
+- `admin_enabled`: starts the optional web admin panel when `-serve` is running.
+- `admin_host`: address for the web admin panel. Keep `127.0.0.1` for safest use.
+- `admin_port`: port for the web admin panel.
+- `admin_token`: admin token for web admin API calls. You can also use `FLANDOSYNC_ADMIN_TOKEN`.
 
 The server also supports both LAN and public access. When a client connects through a LAN IP, the server returns LAN links. When a client connects through a domain, the server returns domain links. This is based on the incoming HTTP `Host` header.
 
 By default, modpack files cannot be downloaded directly without a temporary token. The client requests this token automatically when the player adds a modpack or starts sync.
+
+The web admin panel is disabled by default. The safest remote access pattern is:
+
+```bash
+ssh -L 8010:127.0.0.1:8010 user@your-server
+```
+
+Then open `http://127.0.0.1:8010` on your local computer and enter the admin token in the page.
 
 ## Creating a Modpack
 
@@ -141,6 +157,12 @@ Run:
 ```bash
 cd server
 python server.py -serve
+```
+
+If `admin_enabled` is true, the command also starts the web admin panel. To run only the admin panel:
+
+```bash
+python server.py -serve-admin
 ```
 
 Useful URLs:

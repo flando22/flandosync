@@ -1,5 +1,6 @@
 import argparse
 import hashlib
+import html
 import json
 import os
 import secrets
@@ -32,6 +33,10 @@ class FlandosyncServer:
             "require_download_token": True,
             "download_token_ttl_seconds": 3600,
             "max_concurrent_downloads_per_token": 3,
+            "admin_enabled": False,
+            "admin_host": "127.0.0.1",
+            "admin_port": 8010,
+            "admin_token": "",
         }
 
         if os.path.exists(self.config_path):
@@ -152,6 +157,37 @@ class FlandosyncServer:
         print(f"Key: {access_key}")
         print(f"Files: {len(manifest['files'])}")
         print("-" * 30)
+
+    def list_modpacks(self):
+        if not os.path.isdir(self.config["modpacks_dir"]):
+            return []
+
+        modpacks = []
+        for name in sorted(os.listdir(self.config["modpacks_dir"])):
+            modpack_path = os.path.join(self.config["modpacks_dir"], name)
+            if not os.path.isdir(modpack_path):
+                continue
+
+            manifest = self.load_existing_manifest(modpack_path)
+            modpacks.append(
+                {
+                    "name": name,
+                    "version": manifest.get("version", ""),
+                    "generated_at": manifest.get("generated_at", 0),
+                    "files": len(manifest.get("files", [])),
+                    "has_manifest": bool(manifest),
+                }
+            )
+        return modpacks
+
+    def safe_modpack_name(self, modpack_name):
+        if not modpack_name or "/" in modpack_name or "\\" in modpack_name:
+            raise ValueError("Invalid modpack name")
+        modpack_path = os.path.abspath(os.path.join(self.config["modpacks_dir"], modpack_name))
+        modpacks_root = os.path.abspath(self.config["modpacks_dir"])
+        if os.path.commonpath([modpacks_root, modpack_path]) != modpacks_root:
+            raise ValueError("Invalid modpack path")
+        return modpack_name
 
     def serve(self):
         port = int(self.config["port"])
@@ -375,6 +411,304 @@ class FlandosyncServer:
         httpd = ThreadingHTTPServer(server_address, handler)
         print(f"Flandosync server listening on port {port}")
         print(f"Serving root: {server_root}")
+        self.start_admin_server_if_enabled()
+        httpd.serve_forever()
+
+    def start_admin_server_if_enabled(self):
+        if not self.config_bool("admin_enabled"):
+            return
+
+        admin_token = self.admin_token()
+        if not admin_token:
+            print("Flandosync admin web is enabled, but admin_token is empty. Admin web was not started.")
+            return
+
+        thread = threading.Thread(target=self.serve_admin, daemon=True)
+        thread.start()
+
+    def config_bool(self, key):
+        value = self.config.get(key)
+        if isinstance(value, bool):
+            return value
+        return str(value).strip().lower() in {"1", "true", "yes", "on"}
+
+    def admin_token(self):
+        return os.environ.get("FLANDOSYNC_ADMIN_TOKEN") or str(self.config.get("admin_token", "")).strip()
+
+    def serve_admin(self):
+        host = str(self.config.get("admin_host", "127.0.0.1"))
+        port = int(self.config.get("admin_port", 8010))
+        config_path = self.config_path
+
+        class AdminHandler(SimpleHTTPRequestHandler):
+            def log_message(self, format, *args):
+                print(f"[admin] {self.address_string()} - {format % args}")
+
+            def send_json(self, body_obj, status=200):
+                body = json.dumps(body_obj, ensure_ascii=False, indent=4).encode("utf-8")
+                self.send_response(status)
+                self.send_header("Content-Type", "application/json; charset=utf-8")
+                self.send_header("Content-Length", str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
+
+            def send_html(self, body_text, status=200):
+                body = body_text.encode("utf-8")
+                self.send_response(status)
+                self.send_header("Content-Type", "text/html; charset=utf-8")
+                self.send_header("Content-Length", str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
+
+            def request_token(self):
+                auth_header = self.headers.get("Authorization", "")
+                if auth_header.lower().startswith("bearer "):
+                    return auth_header.split(" ", 1)[1].strip()
+                return self.headers.get("X-Flandosync-Admin-Token", "")
+
+            def require_admin(self, server):
+                expected = server.admin_token()
+                actual = self.request_token()
+                if expected and actual and secrets.compare_digest(expected, actual):
+                    return True
+                self.send_json({"error": "Unauthorized"}, HTTPStatus.UNAUTHORIZED)
+                return False
+
+            def read_json_body(self):
+                try:
+                    content_length = int(self.headers.get("Content-Length", "0"))
+                except ValueError:
+                    content_length = 0
+                if content_length > 64 * 1024:
+                    raise ValueError("Request body is too large")
+                raw_body = self.rfile.read(content_length) if content_length else b"{}"
+                return json.loads(raw_body.decode("utf-8"))
+
+            def admin_page(self):
+                return """<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Flandosync Admin</title>
+  <style>
+    :root { color-scheme: dark light; font-family: Segoe UI, sans-serif; }
+    body { margin: 0; background: #171a1f; color: #edf1f7; }
+    main { max-width: 1080px; margin: 0 auto; padding: 24px; }
+    header { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+    h1 { font-size: 24px; margin: 0; }
+    section { border-top: 1px solid #313844; padding: 18px 0; }
+    label { display: block; margin: 10px 0 5px; color: #b7c0cd; }
+    input, textarea, button { font: inherit; }
+    input, textarea { width: 100%; box-sizing: border-box; padding: 9px; border-radius: 6px; border: 1px solid #485262; background: #101319; color: #edf1f7; }
+    textarea { min-height: 96px; resize: vertical; }
+    button { padding: 8px 12px; border-radius: 6px; border: 1px solid #5b6678; background: #2f6f4e; color: white; cursor: pointer; }
+    button.secondary { background: #303846; }
+    table { width: 100%; border-collapse: collapse; }
+    th, td { text-align: left; padding: 8px; border-bottom: 1px solid #313844; }
+    tr:hover { background: #202631; }
+    .grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+    .actions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 12px; }
+    pre { white-space: pre-wrap; background: #101319; padding: 12px; border-radius: 6px; border: 1px solid #313844; min-height: 80px; }
+    @media (max-width: 760px) { .grid { grid-template-columns: 1fr; } header { align-items: stretch; flex-direction: column; } }
+  </style>
+</head>
+<body>
+<main>
+  <header>
+    <h1>Flandosync Admin</h1>
+    <button class="secondary" onclick="loadModpacks()">Refresh</button>
+  </header>
+
+  <section>
+    <label for="token">Admin token</label>
+    <input id="token" type="password" autocomplete="current-password">
+    <div class="actions">
+      <button onclick="saveToken()">Save token locally</button>
+      <button class="secondary" onclick="loadStatus()">Test</button>
+    </div>
+  </section>
+
+  <section>
+    <h2>Modpacks</h2>
+    <table>
+      <thead><tr><th>Name</th><th>Version</th><th>Files</th><th>Manifest</th></tr></thead>
+      <tbody id="modpacks"></tbody>
+    </table>
+  </section>
+
+  <section>
+    <h2>Generate manifest</h2>
+    <div class="grid">
+      <div>
+        <label for="modpack">Modpack</label>
+        <input id="modpack">
+      </div>
+      <div>
+        <label for="version">Version</label>
+        <input id="version" placeholder="1.2.3">
+      </div>
+    </div>
+    <label for="changelog">Changelog</label>
+    <textarea id="changelog"></textarea>
+    <div class="actions">
+      <button onclick="generateManifest()">Generate</button>
+      <button class="secondary" onclick="loadManifest()">Show manifest</button>
+    </div>
+  </section>
+
+  <section>
+    <h2>Output</h2>
+    <pre id="output"></pre>
+  </section>
+</main>
+<script>
+const tokenInput = document.getElementById('token');
+const saved = sessionStorage.getItem('flandosync_admin_token');
+if (saved) tokenInput.value = saved;
+
+function saveToken() {
+  sessionStorage.setItem('flandosync_admin_token', tokenInput.value);
+  writeOutput('Token saved in this browser tab.');
+}
+
+function headers() {
+  return {
+    'Content-Type': 'application/json',
+    'Authorization': 'Bearer ' + tokenInput.value
+  };
+}
+
+function writeOutput(value) {
+  document.getElementById('output').textContent =
+    typeof value === 'string' ? value : JSON.stringify(value, null, 2);
+}
+
+async function request(path, options = {}) {
+  const response = await fetch(path, { ...options, headers: { ...headers(), ...(options.headers || {}) } });
+  const text = await response.text();
+  let body;
+  try { body = JSON.parse(text); } catch { body = text; }
+  if (!response.ok) throw body;
+  return body;
+}
+
+async function loadStatus() {
+  try { writeOutput(await request('/api/status')); } catch (err) { writeOutput(err); }
+}
+
+async function loadModpacks() {
+  try {
+    const data = await request('/api/modpacks');
+    const tbody = document.getElementById('modpacks');
+    tbody.innerHTML = '';
+    data.modpacks.forEach(pack => {
+      const row = document.createElement('tr');
+      row.innerHTML = `<td>${escapeHtml(pack.name)}</td><td>${escapeHtml(pack.version || '')}</td><td>${pack.files}</td><td>${pack.has_manifest ? 'yes' : 'no'}</td>`;
+      row.onclick = () => {
+        document.getElementById('modpack').value = pack.name;
+        document.getElementById('version').value = pack.version || '';
+      };
+      tbody.appendChild(row);
+    });
+    writeOutput(data);
+  } catch (err) { writeOutput(err); }
+}
+
+async function loadManifest() {
+  const modpack = encodeURIComponent(document.getElementById('modpack').value);
+  try { writeOutput(await request('/api/manifest?modpack=' + modpack)); } catch (err) { writeOutput(err); }
+}
+
+async function generateManifest() {
+  const payload = {
+    modpack: document.getElementById('modpack').value,
+    version: document.getElementById('version').value,
+    changelog: document.getElementById('changelog').value
+  };
+  try {
+    writeOutput(await request('/api/generate', { method: 'POST', body: JSON.stringify(payload) }));
+    await loadModpacks();
+  } catch (err) { writeOutput(err); }
+}
+
+function escapeHtml(value) {
+  return String(value).replace(/[&<>"']/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[ch]));
+}
+</script>
+</body>
+</html>"""
+
+            def do_GET(self):
+                parsed_url = urlparse(self.path)
+                server = FlandosyncServer(config_path)
+
+                if parsed_url.path == "/":
+                    self.send_html(self.admin_page())
+                    return
+
+                if not self.require_admin(server):
+                    return
+
+                if parsed_url.path == "/api/status":
+                    self.send_json(
+                        {
+                            "ok": True,
+                            "modpacks_dir": server.config["modpacks_dir"],
+                            "modpacks": len(server.list_modpacks()),
+                        }
+                    )
+                    return
+
+                if parsed_url.path == "/api/modpacks":
+                    self.send_json({"modpacks": server.list_modpacks()})
+                    return
+
+                if parsed_url.path == "/api/manifest":
+                    query = parse_qs(parsed_url.query)
+                    modpack = server.safe_modpack_name(query.get("modpack", [""])[0])
+                    manifest = server.load_existing_manifest(
+                        os.path.join(server.config["modpacks_dir"], modpack)
+                    )
+                    if not manifest:
+                        self.send_json({"error": "Manifest not found"}, HTTPStatus.NOT_FOUND)
+                        return
+                    self.send_json(manifest)
+                    return
+
+                self.send_json({"error": "Not found"}, HTTPStatus.NOT_FOUND)
+
+            def do_POST(self):
+                parsed_url = urlparse(self.path)
+                server = FlandosyncServer(config_path)
+                if not self.require_admin(server):
+                    return
+
+                if parsed_url.path == "/api/generate":
+                    try:
+                        payload = self.read_json_body()
+                        modpack = server.safe_modpack_name(str(payload.get("modpack", "")).strip())
+                        if modpack not in {item["name"] for item in server.list_modpacks()}:
+                            self.send_json(
+                                {"error": "Modpack does not exist. Create folders on the server first."},
+                                HTTPStatus.BAD_REQUEST,
+                            )
+                            return
+                        version = str(payload.get("version", "")).strip() or None
+                        changelog = str(payload.get("changelog", "")).strip()
+                        server.generate_manifest(modpack, version=version, changelog=changelog)
+                        manifest = server.load_existing_manifest(
+                            os.path.join(server.config["modpacks_dir"], modpack)
+                        )
+                        self.send_json({"ok": True, "manifest": manifest})
+                    except Exception as exc:
+                        self.send_json({"error": html.escape(str(exc))}, HTTPStatus.BAD_REQUEST)
+                    return
+
+                self.send_json({"error": "Not found"}, HTTPStatus.NOT_FOUND)
+
+        httpd = ThreadingHTTPServer((host, port), AdminHandler)
+        print(f"Flandosync admin web listening on {host}:{port}")
         httpd.serve_forever()
 
 
@@ -385,6 +719,7 @@ if __name__ == "__main__":
     parser.add_argument("-changelog", type=str, help="Set a short changelog written to manifest.json")
     parser.add_argument("-changelog-file", type=str, help="Read changelog text from a UTF-8 file")
     parser.add_argument("-serve", action="store_true", help="Start the HTTP server")
+    parser.add_argument("-serve-admin", action="store_true", help="Start only the optional web admin server")
 
     args = parser.parse_args()
     server = FlandosyncServer()
@@ -395,6 +730,8 @@ if __name__ == "__main__":
             with open(args.changelog_file, "r", encoding="utf-8") as f:
                 changelog = f.read().strip()
         server.generate_manifest(args.generate, version=args.version, changelog=changelog)
+    elif args.serve_admin:
+        server.serve_admin()
     elif args.serve:
         server.serve()
     else:

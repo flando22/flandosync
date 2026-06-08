@@ -4,5 +4,9 @@
     "port": 8000,
     "require_download_token": true,
     "download_token_ttl_seconds": 3600,
-    "max_concurrent_downloads_per_token": 3
+    "max_concurrent_downloads_per_token": 3,
+    "admin_enabled": false,
+    "admin_host": "127.0.0.1",
+    "admin_port": 8010,
+    "admin_token": ""
 }

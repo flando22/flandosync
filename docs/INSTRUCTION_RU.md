@@ -60,7 +60,11 @@ cp config.example.json config.json
     "port": 8000,
     "require_download_token": true,
     "download_token_ttl_seconds": 3600,
-    "max_concurrent_downloads_per_token": 3
+    "max_concurrent_downloads_per_token": 3,
+    "admin_enabled": false,
+    "admin_host": "127.0.0.1",
+    "admin_port": 8010,
+    "admin_token": ""
 }
 ```
 
@@ -72,10 +76,22 @@ cp config.example.json config.json
 - `require_download_token`: требовать временный token для скачивания файлов.
 - `download_token_ttl_seconds`: срок жизни token после `/project_by_key`.
 - `max_concurrent_downloads_per_token`: лимит параллельных скачиваний для одного token.
+- `admin_enabled`: запускать опциональную web-админку вместе с `-serve`.
+- `admin_host`: адрес web-админки. Самый безопасный вариант - `127.0.0.1`.
+- `admin_port`: порт web-админки.
+- `admin_token`: отдельный token для web-админки. Также можно использовать переменную окружения `FLANDOSYNC_ADMIN_TOKEN`.
 
 Сервер поддерживает и локальный доступ, и публичный доступ. Если клиент приходит по локальному IP, сервер отдаёт локальные ссылки. Если клиент приходит через домен, сервер отдаёт ссылки с доменом. Это делается через HTTP-заголовок `Host`.
 
 По умолчанию файлы сборки нельзя скачать напрямую без временного token. Клиент получает этот token автоматически при добавлении сборки и перед синхронизацией.
+
+Web-админка выключена по умолчанию. Самый безопасный способ удаленного доступа:
+
+```bash
+ssh -L 8010:127.0.0.1:8010 user@your-server
+```
+
+После этого открой `http://127.0.0.1:8010` на своём компьютере и введи admin token на странице.
 
 ## Создание Сборки
 
@@ -142,6 +158,12 @@ python server.py -generate example-pack -version 1.2.1 -changelog "Обновл�
 ```bash
 cd server
 python server.py -serve
+```
+
+Если `admin_enabled` включён, эта команда также запустит web-админку. Чтобы запустить только web-админку:
+
+```bash
+python server.py -serve-admin
 ```
 
 Полезные URL:

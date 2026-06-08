@@ -34,6 +34,25 @@ The admin API should have all of these controls before it is exposed:
 - Dry-run mode for destructive actions.
 - Confirmation prompts for deleting files, rotating keys, and restarting services.
 
+## Web Admin Panel
+
+The built-in web admin panel is optional and disabled by default.
+
+Recommended settings:
+
+- `admin_enabled`: `false` unless actively needed.
+- `admin_host`: `127.0.0.1` for localhost-only access.
+- `admin_port`: a separate port from the public sync server.
+- `admin_token`: a strong admin-only token, or use `FLANDOSYNC_ADMIN_TOKEN`.
+
+Recommended remote access:
+
+```bash
+ssh -L 8010:127.0.0.1:8010 user@your-server
+```
+
+The first web admin version intentionally supports only low-risk maintenance: list modpacks, view manifests, and regenerate manifests with version/changelog. Upload, delete, key management, and service restart should stay out until they have backups, audit logging, and extra confirmations.
+
 ## Safer Admin Operations
 
 Admin actions should be narrow and explicit:

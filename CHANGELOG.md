@@ -1,5 +1,13 @@
 # Changelog
 
+## v2.1.0
+
+- Added an optional web admin panel hosted by the server.
+- Web admin is disabled by default and runs on a separate configurable host and port.
+- Added admin token authentication for web admin API calls.
+- Added web admin actions for listing modpacks, viewing manifests, and regenerating manifests with version/changelog.
+- Added web admin config fields and documentation.
+
 ## v2.0.0
 
 - Added a separate SSH-based admin client MVP.

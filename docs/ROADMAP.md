@@ -77,3 +77,20 @@ Separate Windows admin client for server maintenance:
 Admin access must use separate authorization. The normal player key should not grant admin permissions.
 
 Detailed notes: [Admin Security](ADMIN_SECURITY.md).
+
+## v2.1.0 - Optional Web Admin
+
+Goal: add browser-based maintenance without exposing a broad public admin API.
+
+- Add `admin_enabled` config switch. Done.
+- Add separate `admin_host` and `admin_port`. Done.
+- Require separate `admin_token` or `FLANDOSYNC_ADMIN_TOKEN`. Done.
+- Bind to `127.0.0.1` by default. Done.
+- List modpacks. Done.
+- View manifests. Done.
+- Regenerate manifests with version/changelog. Done.
+- Upload files. Planned.
+- Delete files. Planned.
+- Restart services. Planned.
+
+Recommended use: keep the web admin bound to localhost and reach it through an SSH tunnel.
